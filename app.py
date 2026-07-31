@@ -796,7 +796,8 @@ class AutomationWorker:
     
     def stop(self):
         self.running = False
-        self.executor.shutdown(wait=False)
+        if self.executor:
+            self.executor.shutdown(wait=False)
         if self.thread:
             self.thread.join(timeout=5)
         send_log("⏹ Automation stopped", 'warning')
@@ -824,15 +825,24 @@ class AutomationWorker:
         return False
     
     def _run(self):
+        """Main worker loop - processes ALL available numbers before moving to next panel"""
         while self.running:
             try:
+                # Recreate executor if it was shut down
+                if self.executor is None or self.executor._shutdown:
+                    self.executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+                
                 panels = self.database_manager.get_panels()
+                
                 if not panels:
                     send_log("⚠️ No panels available. Please add a Firebase panel.", 'warning')
                     time.sleep(10)
                     continue
                 
+                # Get current panel
                 panel = self.database_manager.get_current_panel()
+                
+                # If no panel selected or current panel is invalid, select first one
                 if not panel or panel not in panels:
                     self.database_manager.set_current_db(0)
                     panel = self.database_manager.get_current_panel()
@@ -853,7 +863,10 @@ class AutomationWorker:
                 
                 send_log(f"📡 Panel {panel_index + 1}/{total_panels}: {panel_name}", 'info')
                 
+                # Fetch phones from panel
+                send_log(f"📡 Fetching devices from {panel_name}...", 'info')
                 devices = fetch_phones_from_panel(panel, limit=100)
+                
                 if not devices:
                     send_log(f"⚠️ No devices found in {panel_name}", 'warning')
                     self._move_to_next_panel()
@@ -861,8 +874,14 @@ class AutomationWorker:
                     continue
                 
                 send_log(f"📋 Found {len(devices)} active devices in {panel_name}", 'info')
+                for phone, device_id in devices[:10]:
+                    send_log(f"  📱 {phone} (device: {device_id[:8]}...)", 'info')
+                if len(devices) > 10:
+                    send_log(f"  ... and {len(devices) - 10} more", 'info')
+                
                 auto_status['numbers_found'] = [phone for phone, _ in devices]
                 
+                # Filter already processed
                 available = []
                 for phone, dev in devices:
                     if not self.account_manager.is_processed(phone):
@@ -877,17 +896,24 @@ class AutomationWorker:
                 total_available = len(available)
                 send_log(f"🆕 Found {total_available} new devices to process in {panel_name}", 'info')
                 
+                # ============ PROCESS ALL AVAILABLE NUMBERS IN BATCHES ============
                 processed_total = 0
                 failed_total = 0
                 batch_num = 1
                 
                 while processed_total < total_available and self.running:
+                    # Recreate executor if it was shut down
+                    if self.executor is None or self.executor._shutdown:
+                        self.executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+                    
+                    # Get next batch (up to MAX_WORKERS at a time)
                     start_idx = processed_total
                     end_idx = min(processed_total + MAX_WORKERS, total_available)
                     batch = available[start_idx:end_idx]
                     
-                    send_log(f"🚀 Batch {batch_num}: Processing {len(batch)} devices", 'info')
+                    send_log(f"🚀 Batch {batch_num}: Processing {len(batch)} devices (remaining: {total_available - processed_total})", 'info')
                     
+                    # Submit batch to thread pool
                     futures = []
                     for phone, device_id in batch:
                         if not self.running:
@@ -900,6 +926,7 @@ class AutomationWorker:
                         auto_status['active_workers'] = len([f for f in futures if not f.done()])
                         update_status()
                     
+                    # Wait for ALL tasks in this batch to complete
                     completed = 0
                     batch_success = 0
                     batch_failed = 0
@@ -923,22 +950,31 @@ class AutomationWorker:
                         processed_total += 1
                         auto_status['active_workers'] = len([f for f in futures if not f.done()])
                         update_status()
+                        
+                        if completed % 2 == 0 or completed == len(futures):
+                            send_log(f"📊 Batch {batch_num} progress: {completed}/{len(futures)} completed ({batch_success} success, {batch_failed} failed)", 'info')
                     
                     batch_num += 1
                     auto_status['active_workers'] = 0
                     update_status()
                     failed_total += batch_failed
                     
-                    send_log(f"📊 Batch complete: {batch_success} success, {batch_failed} failed", 'info')
+                    send_log(f"📊 Batch {batch_num-1} complete: {batch_success} success, {batch_failed} failed", 'info')
                     
+                    # If too many failures, break and move to next panel
                     if self.failed_count >= 10:
-                        send_log(f"⚠️ Too many failures in {panel_name}. Moving to next panel...", 'warning')
+                        send_log(f"⚠️ Too many failures in {panel_name} ({self.failed_count} consecutive failures). Moving to next panel...", 'warning')
                         break
                     
+                    # Small delay between batches
                     if processed_total < total_available:
                         time.sleep(2)
                 
-                send_log(f"📊 Panel {panel_name} complete: {processed_total - failed_total} success", 'info')
+                # Report final results for this panel
+                send_log(f"📊 Panel {panel_name} complete: {processed_total - failed_total} success, {failed_total} failed out of {total_available}", 'info')
+                
+                # Move to next panel
+                send_log(f"🔄 Moving to next panel...", 'info')
                 self._move_to_next_panel()
                 auto_status['current_action'] = 'Idle'
                 update_status()
