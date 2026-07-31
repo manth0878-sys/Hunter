@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FKCoinHunter - Web Panel</title>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0e1a;
+            color: #e0e0e0;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .container {
+            display: flex;
+            height: 100vh;
+            gap: 10px;
+            padding: 10px;
+        }
+        .sidebar {
+            width: 300px;
+            background: #141b2d;
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            overflow-y: auto;
+        }
+        .main { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+        .top-row { display: flex; gap: 10px; height: 50%; }
+        .bottom-row { display: flex; gap: 10px; height: 50%; }
+        .panel {
+            background: #141b2d;
+            border-radius: 12px;
+            padding: 15px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .panel-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #6b7a9f;
+            margin-bottom: 10px;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        .stat-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .stat-card {
+            background: #1a2338;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+        .stat-value { font-size: 24px; font-weight: bold; color: #fff; }
+        .stat-label { font-size: 11px; color: #6b7a9f; margin-top: 4px; }
+        .stat-value.success { color: #4ade80; }
+        .stat-value.failed { color: #f87171; }
+        .stat-value.hit { color: #fbbf24; }
+        .stat-value.info { color: #60a5fa; }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+        .btn:hover { opacity: 0.8; transform: scale(0.98); }
+        .btn-start { background: #22c55e; color: #fff; }
+        .btn-stop { background: #ef4444; color: #fff; }
+        .btn-primary { background: #3b82f6; color: #fff; }
+        .btn-success { background: #22c55e; color: #fff; }
+        .btn-danger { background: #ef4444; color: #fff; }
+        .btn-warning { background: #f59e0b; color: #fff; }
+        .btn-secondary { background: #4b5563; color: #fff; }
+        .btn-sm { padding: 4px 10px; font-size: 11px; }
+        
+        .logs-container {
+            height: 100%;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            background: #0a0e1a;
+            border-radius: 8px;
+            padding: 8px;
+        }
+        .log-entry { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+        .log-entry .time { color: #6b7a9f; margin-right: 8px; }
+        .log-entry .msg { color: #c8d0e0; }
+        .log-entry .success { color: #4ade80; }
+        .log-entry .error { color: #f87171; }
+        .log-entry .warning { color: #fbbf24; }
+        .log-entry .hit { color: #fbbf24; font-weight: bold; background: rgba(251, 191, 36, 0.1); padding: 2px 6px; border-radius: 4px; display: inline-block; }
+        .log-entry .info { color: #60a5fa; }
+        
+        .number-list { display: flex; flex-wrap: wrap; gap: 4px; }
+        .number-chip {
+            background: #1a2338;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-family: monospace;
+        }
+        .number-chip.success { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
+        .number-chip.failed { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+        .number-chip.hit { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+        .number-chip.processing { background: rgba(96, 165, 250, 0.2); color: #60a5fa; }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        .status-indicator.running { background: #4ade80; animation: pulse 1s infinite; }
+        .status-indicator.stopped { background: #6b7a9f; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        
+        .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+        
+        .hit-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(251, 191, 36, 0.95);
+            color: #0a0e1a;
+            padding: 16px 24px;
+            border-radius: 12px;
+            font-weight: bold;
+            box-shadow: 0 10px 40px rgba(251, 191, 36, 0.3);
+            animation: slideIn 0.5s ease;
+            z-index: 1000;
+            max-width: 350px;
+        }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        
+        .db-list { font-size: 12px; font-family: monospace; max-height: 120px; overflow-y: auto; }
+        .db-item {
+            padding: 4px 8px;
+            margin: 2px 0;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #0a0e1a;
+        }
+        .db-item.active { background: rgba(59, 130, 246, 0.2); border-left: 3px solid #3b82f6; }
+        .db-url { font-size: 10px; color: #6b7a9f; word-break: break-all; flex: 1; margin-right: 8px; }
+        
+        .recent-list { font-size: 12px; }
+        .recent-item { padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; }
+        .recent-item .phone { font-family: monospace; }
+        .recent-item .balance { font-weight: bold; }
+        .recent-item .balance.hit { color: #fbbf24; }
+        
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .gap-2 { gap: 8px; }
+        .gap-4 { gap: 16px; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .mt-2 { margin-top: 8px; }
+        .mb-2 { margin-bottom: 8px; }
+        .w-full { width: 100%; }
+        .text-center { text-align: center; }
+        
+        .scrollbar::-webkit-scrollbar { width: 4px; }
+        .scrollbar::-webkit-scrollbar-track { background: #0a0e1a; }
+        .scrollbar::-webkit-scrollbar-thumb { background: #1a2338; border-radius: 2px; }
+        
+        textarea {
+            width: 100%;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #1a2338;
+            background: #0a0e1a;
+            color: #e0e0e0;
+            font-size: 11px;
+            font-family: monospace;
+            resize: vertical;
+            min-height: 60px;
+        }
+        textarea:focus { outline: none; border-color: #3b82f6; }
+        
+        /* Modal styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .modal-content {
+            max-width: 800px;
+            margin: 30px auto;
+            background: #141b2d;
+            border-radius: 12px;
+            padding: 25px;
+        }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-header h2 { color: #fbbf24; }
+        .modal-close { background: transparent; border: none; color: #fff; font-size: 28px; cursor: pointer; }
+        .modal-close:hover { color: #f87171; }
+        
+        .hit-item {
+            background: #1a2338;
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+        .hit-item:hover { background: #2a3350; }
+        .hit-item .phone { font-weight: bold; color: #fff; }
+        .hit-item .balance { color: #fbbf24; font-weight: bold; }
+        .hit-item .username { color: #6b7a9f; font-size: 12px; }
+        .hit-item .device { color: #4b5a7f; font-size: 10px; font-family: monospace; }
+        .hit-item .arrow { color: #fbbf24; }
+        
+        .detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            background: #1a2338;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .detail-grid .label { color: #6b7a9f; }
+        .detail-grid .value { color: #fff; }
+        
+        .message-item {
+            background: #1a2338;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 6px;
+        }
+        .message-item .sender { color: #60a5fa; font-weight: bold; }
+        .message-item .timestamp { color: #6b7a9f; font-size: 11px; }
+        .message-item .text { color: #c8d0e0; font-size: 13px; margin-top: 4px; word-wrap: break-word; }
+        
+        @media (max-width: 768px) {
+            .container { flex-direction: column; }
+            .sidebar { width: 100%; height: 40vh; }
+            .top-row, .bottom-row { flex-direction: column; height: auto; }
+            .top-row .panel, .bottom-row .panel { height: 300px; }
+            .stat-grid { grid-template-columns: 1fr 1fr; }
+            .detail-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Hit Notification -->
+    <div class="hit-notification" id="hitNotification" style="display:none;"></div>
+
+    <!-- Hits Modal -->
+    <div class="modal-overlay" id="hitsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⭐ HITS</h2>
+                <button class="modal-close" onclick="closeHitsModal()">✕</button>
+            </div>
+            <div id="hitsList"><div style="color:#6b7a9f; text-align:center; padding:20px;">Loading hits...</div></div>
+        </div>
+    </div>
+
+    <!-- Hit Detail Modal -->
+    <div class="modal-overlay" id="hitDetailModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📱 Hit Details</h2>
+                <button class="modal-close" onclick="closeHitDetailModal()">✕</button>
+            </div>
+            <div id="hitDetailContent"><div style="color:#6b7a9f; text-align:center; padding:20px;">Loading...</div></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar scrollbar">
+            <div>
+                <h2 style="color: #fbbf24; font-size: 20px;">🦅 FKCoinHunter</h2>
+                <div style="font-size: 12px; color: #6b7a9f;">Web Panel</div>
+            </div>
+            
+            <div class="controls">
+                <button class="btn btn-start" id="btnStart">▶ Start</button>
+                <button class="btn btn-stop" id="btnStop">⏹ Stop</button>
+                <button class="btn btn-warning" onclick="showHits()">⭐ HITS</button>
+            </div>
+            
+            <div class="stat-grid">
+                <div class="stat-card"><div class="stat-value info" id="statProcessed">0</div><div class="stat-label">Processed</div></div>
+                <div class="stat-card"><div class="stat-value success" id="statSuccess">0</div><div class="stat-label">Successful</div></div>
+                <div class="stat-card"><div class="stat-value failed" id="statFailed">0</div><div class="stat-label">Failed</div></div>
+                <div class="stat-card"><div class="stat-value hit" id="statHits">0</div><div class="stat-label">⭐ HITS</div></div>
+            </div>
+            
+            <div style="font-size: 13px;">
+                <div class="flex justify-between"><span>💰 Total FK</span><span id="statBalance">0</span></div>
+                <div class="flex justify-between"><span>📱 Accounts</span><span id="statAccounts">0</span></div>
+                <div class="flex justify-between"><span>📡 Status</span><span><span class="status-indicator stopped" id="statusIndicator"></span><span id="statusText">Stopped</span></span></div>
+                <div class="flex justify-between"><span>🔧 Workers</span><span id="statWorkers">0</span></div>
+                <div class="flex justify-between"><span>📡 Panel</span><span id="currentPanel">None</span></div>
+            </div>
+            
+            <div>
+                <div class="panel-title">📡 Databases (<span id="dbCount">0</span>)</div>
+                <div class="db-list" id="dbList"><div style="color:#6b7a9f; font-size:12px;">No databases added</div></div>
+                <div style="margin-top: 8px;">
+                    <textarea id="dbInput" placeholder="Add multiple database URLs, one per line&#10;https://project1.firebaseio.com/&#10;https://project2.firebaseio.com/"></textarea>
+                    <div style="display:flex; gap:4px; margin-top:4px; flex-wrap:wrap;">
+                        <button class="btn btn-primary btn-sm" id="btnAddDb" style="flex:1;">➕ Add All</button>
+                        <button class="btn btn-secondary btn-sm" id="btnFetchDevices">📡 Fetch</button>
+                        <button class="btn btn-secondary btn-sm" id="btnNextPanel">⏭️ Next</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div>
+                <div class="panel-title">📋 Recent Numbers</div>
+                <div class="number-list" id="numberList"><span style="color:#6b7a9f; font-size:12px;">No numbers yet</span></div>
+            </div>
+        </div>
+        
+        <!-- Main -->
+        <div class="main">
+            <div class="top-row">
+                <div class="panel">
+                    <div class="flex justify-between items-center">
+                        <div class="panel-title">📊 Live Logs</div>
+                        <button class="btn btn-sm btn-danger" id="btnClearLogs">Clear</button>
+                    </div>
+                    <div class="logs-container scrollbar" id="logsContainer"><div style="color:#6b7a9f; text-align:center; padding:20px;">Waiting for activity...</div></div>
+                </div>
+                <div class="panel" style="max-width:300px;">
+                    <div class="panel-title">⭐ Recent Hits</div>
+                    <div class="recent-list" id="recentHits"><div style="color:#6b7a9f; font-size:12px;">No hits yet</div></div>
+                </div>
+            </div>
+            <div class="bottom-row">
+                <div class="panel">
+                    <div class="panel-title">📱 Recent Accounts</div>
+                    <div class="recent-list" id="recentAccounts"><div style="color:#6b7a9f; font-size:12px;">No accounts yet</div></div>
+                </div>
+                <div class="panel" style="max-width:300px;">
+                    <div class="panel-title">💰 Statistics</div>
+                    <div style="font-size:12px; line-height:2;">
+                        <div class="flex justify-between"><span>OTP (STAN):</span><span id="statOtpStan">0</span></div>
+                        <div class="flex justify-between"><span>OTP (Fallback):</span><span id="statOtpFallback">0</span></div>
+                        <div class="flex justify-between"><span>HTTP 400:</span><span id="statHttp400">0</span></div>
+                        <div class="flex justify-between"><span>Already Reg:</span><span id="statAlreadyReg">0</span></div>
+                        <div class="flex justify-between"><span>No OTP:</span><span id="statNoOtp">0</span></div>
+                        <div class="flex justify-between"><span>Saved Accounts:</span><span id="statSaved">0</span></div>
+                        <hr style="border-color:#1a2338; margin:4px 0;">
+                        <div class="flex justify-between"><span>📈 Success Rate:</span><span id="statRate">0%</span></div>
+                    </div>
+                    <div style="margin-top:8px; display:flex; gap:4px; flex-wrap:wrap;">
+                        <button class="btn btn-sm btn-primary" id="btnExportAccounts">📤 Accounts</button>
+                        <button class="btn btn-sm btn-warning" id="btnExportHits">⭐ Hits</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        
+        function connectSocket() {
+            socket = io();
+            socket.on('connect', function() { console.log('WebSocket connected'); });
+            socket.on('status_update', function(data) { updateUI(data); });
+            socket.on('new_log', function(log) { addLog(log); });
+            socket.on('new_hit', function(data) {
+                showHitNotification(`⭐ HIT! ${data.phone} | ${data.balance} FK`);
+                if (document.getElementById('hitsModal').style.display === 'block') { loadHits(); }
+            });
+            socket.on('disconnect', function() { setTimeout(connectSocket, 2000); });
+        }
+        
+        function updateUI(data) {
+            document.getElementById('statProcessed').textContent = data.total_processed || 0;
+            document.getElementById('statSuccess').textContent = data.successful || 0;
+            document.getElementById('statFailed').textContent = data.failed || 0;
+            document.getElementById('statHits').textContent = data.hits || 0;
+            document.getElementById('statBalance').textContent = data.total_balance || 0;
+            document.getElementById('statAccounts').textContent = data.recent_accounts ? data.recent_accounts.length : 0;
+            document.getElementById('statWorkers').textContent = data.active_workers || 0;
+            document.getElementById('currentPanel').textContent = data.current_panel || 'None';
+            
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            if (data.running) {
+                indicator.className = 'status-indicator running';
+                statusText.textContent = 'Running';
+                document.getElementById('btnStart').disabled = true;
+                document.getElementById('btnStop').disabled = false;
+            } else {
+                indicator.className = 'status-indicator stopped';
+                statusText.textContent = 'Stopped';
+                document.getElementById('btnStart').disabled = false;
+                document.getElementById('btnStop').disabled = true;
+            }
+            
+            const numberList = document.getElementById('numberList');
+            if (data.numbers_found && data.numbers_found.length > 0) {
+                numberList.innerHTML = data.numbers_found.slice(0, 20).map(n => 
+                    `<span class="number-chip ${n === data.current_number ? 'processing' : ''}">${n}</span>`
+                ).join('');
+                if (data.numbers_found.length > 20) {
+                    numberList.innerHTML += `<span class="number-chip">+${data.numbers_found.length - 20} more</span>`;
+                }
+            }
+            
+            const recentAccounts = document.getElementById('recentAccounts');
+            if (data.recent_accounts && data.recent_accounts.length > 0) {
+                recentAccounts.innerHTML = data.recent_accounts.slice(-10).reverse().map(a => `
+                    <div class="recent-item">
+                        <span class="phone">${a.is_hit ? '⭐' : '📱'} ${a.phone}</span>
+                        <span class="balance ${a.is_hit ? 'hit' : ''}">${a.balance} FK</span>
+                        <span style="color:#6b7a9f;font-size:10px;">${a.time}</span>
+                    </div>
+                `).join('');
+            }
+            
+            const recentHits = document.getElementById('recentHits');
+            if (data.recent_hits && data.recent_hits.length > 0) {
+                recentHits.innerHTML = data.recent_hits.slice(-10).reverse().map(h => `
+                    <div class="recent-item">
+                        <span class="phone">⭐ ${h.phone}</span>
+                        <span class="balance hit">${h.balance} FK</span>
+                        <span style="color:#6b7a9f;font-size:10px;">${h.time}</span>
+                    </div>
+                `).join('');
+            }
+            
+            if (data.stats) {
+                document.getElementById('statOtpStan').textContent = data.stats.otp_found_stan || 0;
+                document.getElementById('statOtpFallback').textContent = data.stats.otp_found_fallback || 0;
+                document.getElementById('statHttp400').textContent = data.stats.http_400_errors || 0;
+                document.getElementById('statAlreadyReg').textContent = data.stats.already_registered || 0;
+                document.getElementById('statNoOtp').textContent = data.stats.no_otp || 0;
+                document.getElementById('statSaved').textContent = data.stats.saved_accounts || 0;
+                const rate = data.total_processed > 0 ? ((data.successful / data.total_processed) * 100).toFixed(1) : 0;
+                document.getElementById('statRate').textContent = rate + '%';
+            }
+        }
+        
+        function addLog(log) {
+            const container = document.getElementById('logsContainer');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const time = log.timestamp || new Date().toLocaleTimeString();
+            const typeClass = log.type || 'info';
+            entry.innerHTML = `<span class="time">${time}</span><span class="msg ${typeClass}">${log.message}</span>`;
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+            while (container.children.length > 500) { container.removeChild(container.firstChild); }
+        }
+        
+        function showHitNotification(message) {
+            const el = document.getElementById('hitNotification');
+            el.textContent = message;
+            el.style.display = 'block';
+            setTimeout(() => { el.style.display = 'none'; }, 5000);
+        }
+        
+        // ============ HIT SYSTEM ============
+        function showHits() {
+            document.getElementById('hitsModal').style.display = 'block';
+            loadHits();
+        }
+        function closeHitsModal() { document.getElementById('hitsModal').style.display = 'none'; }
+        
+        function loadHits() {
+            fetch('/api/hits').then(res => res.json()).then(hits => {
+                const container = document.getElementById('hitsList');
+                if (!hits || hits.length === 0) {
+                    container.innerHTML = '<div style="color:#6b7a9f; text-align:center; padding:20px;">No hits found yet. (≥75 FK required)</div>';
+                } else {
+                    container.innerHTML = hits.map((hit, index) => `
+                        <div class="hit-item" onclick="showHitDetail(${index})">
+                            <div>
+                                <div class="phone">📱 ${hit.phone}</div>
+                                <div style="display:flex; gap:10px; margin-top:4px; flex-wrap:wrap;">
+                                    <span class="balance">💰 ${hit.fk_balance} FK</span>
+                                    <span class="username">👤 ${hit.username}</span>
+                                    <span class="device">📡 Device: ${hit.device_id ? hit.device_id.substring(0,12) + '...' : 'N/A'}</span>
+                                </div>
+                            </div>
+                            <div class="arrow">➡️</div>
+                        </div>
+                    `).join('');
+                }
+            }).catch(err => {
+                document.getElementById('hitsList').innerHTML = `<div style="color:#f87171; text-align:center; padding:20px;">❌ Error loading hits: ${err}</div>`;
+            });
+        }
+        
+        function showHitDetail(index) {
+            const container = document.getElementById('hitDetailContent');
+            container.innerHTML = '<div style="color:#6b7a9f; text-align:center; padding:20px;">Loading...</div>';
+            document.getElementById('hitDetailModal').style.display = 'block';
+            
+            fetch(`/api/hits/${index}`).then(res => res.json()).then(hit => {
+                container.innerHTML = `
+                    <div class="detail-grid">
+                        <div><span class="label">📱 Phone:</span> <span class="value">${hit.phone}</span></div>
+                        <div><span class="label">👤 Username:</span> <span class="value">${hit.username}</span></div>
+                        <div><span class="label">💰 Balance:</span> <span class="value" style="color:#fbbf24; font-weight:bold;">${hit.fk_balance} FK</span></div>
+                        <div><span class="label">🆔 User ID:</span> <span class="value">${hit.user_id}</span></div>
+                        <div><span class="label">📅 Created:</span> <span class="value">${hit.created_at}</span></div>
+                        <div><span class="label">📡 Firebase:</span> <span class="value" style="font-size:11px; word-break:break-all;">${hit.firebase_url || 'N/A'}</span></div>
+                        <div style="grid-column: span 2;"><span class="label">🔑 Device ID:</span> <span class="value" style="font-family:monospace; font-size:12px; word-break:break-all;">${hit.device_id || 'N/A'}</span></div>
+                    </div>
+                    <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+                        <button class="btn btn-primary" onclick="fetchHitMessages(${index})">📨 Fetch Last 5 Messages</button>
+                        <button class="btn btn-warning" onclick="refreshHitMessages(${index})">🔄 Refresh</button>
+                        <button class="btn btn-secondary" onclick="closeHitDetailModal()">🔙 Back</button>
+                    </div>
+                    <div id="hitMessagesContainer" style="background:#0a0e1a; border-radius:8px; padding:15px; min-height:100px;">
+                        <div style="color:#6b7a9f; text-align:center;">Click "Fetch Last 5 Messages" to view messages from Firebase</div>
+                    </div>
+                `;
+            }).catch(err => {
+                container.innerHTML = `<div style="color:#f87171; text-align:center; padding:20px;">❌ Error loading hit details: ${err}</div>`;
+            });
+        }
+        function closeHitDetailModal() { document.getElementById('hitDetailModal').style.display = 'none'; }
+        
+        function fetchHitMessages(index) {
+            const container = document.getElementById('hitMessagesContainer');
+            container.innerHTML = '<div style="color:#6b7a9f; text-align:center; padding:20px;">⏳ Fetching messages from Firebase...</div>';
+            fetch(`/api/hits/${index}/messages`).then(res => res.json()).then(messages => displayMessages(container, messages))
+                .catch(err => { container.innerHTML = `<div style="color:#f87171; text-align:center; padding:20px;">❌ Error fetching messages: ${err}</div>`; });
+        }
+        
+        function refreshHitMessages(index) {
+            const container = document.getElementById('hitMessagesContainer');
+            container.innerHTML = '<div style="color:#6b7a9f; text-align:center; padding:20px;">🔄 Refreshing messages from Firebase...</div>';
+            fetch(`/api/hits/${index}/messages/refresh`, { method: 'POST' }).then(res => res.json()).then(messages => displayMessages(container, messages))
+                .catch(err => { container.innerHTML = `<div style="color:#f87171; text-align:center; padding:20px;">❌ Error refreshing messages: ${err}</div>`; });
+        }
+        
+        function displayMessages(container, messages) {
+            if (!messages || messages.length === 0) {
+                container.innerHTML = '<div style="color:#6b7a9f; text-align:center; padding:20px;">📭 No messages found for this device</div>';
+                return;
+            }
+            container.innerHTML = `
+                <div style="color:#fbbf24; font-weight:bold; margin-bottom:10px;">📨 Last ${messages.length} Messages:</div>
+                ${messages.map((msg, i) => `
+                    <div class="message-item">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span class="sender">${i+1}. 📩 ${msg.sender || 'Unknown'}</span>
+                            <span class="timestamp">⏰ ${msg.timestamp || 'N/A'}</span>
+                        </div>
+                        <div class="text">${msg.text || 'No message content'}</div>
+                    </div>
+                `).join('')}
+            `;
+        }
+        
+        // ============ DATABASE FUNCTIONS ============
+        async function loadDatabases() {
+            try {
+                const resp = await fetch('/api/databases');
+                const data = await resp.json();
+                const list = document.getElementById('dbList');
+                document.getElementById('dbCount').textContent = data.total || 0;
+                document.getElementById('currentPanel').textContent = data.current_panel || 'None';
+                
+                if (data.databases.length === 0) {
+                    list.innerHTML = '<div style="color:#6b7a9f;font-size:12px;">No databases added</div>';
+                    return;
+                }
+                list.innerHTML = data.databases.map((url, i) => `
+                    <div class="db-item ${i === data.current_index ? 'active' : ''}">
+                        <span class="db-url">${i+1}. ${url.substring(0, 50)}${url.length > 50 ? '...' : ''}</span>
+                        <div>
+                            ${i !== data.current_index ? `<button class="btn btn-sm btn-primary" onclick="selectDb(${i})">Select</button>` : ''}
+                            <button class="btn btn-sm btn-danger" onclick="deleteDb(${i})">✕</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch(e) { console.error('Failed to load databases:', e); }
+        }
+        
+        async function selectDb(index) {
+            try {
+                await fetch('/api/databases/select', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({index}) });
+                loadDatabases();
+            } catch(e) {}
+        }
+        
+        async function deleteDb(index) {
+            if (!confirm('Delete this database?')) return;
+            try {
+                await fetch('/api/databases/delete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({index}) });
+                loadDatabases();
+            } catch(e) {}
+        }
+        
+        // ============ EVENT LISTENERS ============
+        document.addEventListener('DOMContentLoaded', function() {
+            connectSocket();
+            loadDatabases();
+            
+            // Start
+            document.getElementById('btnStart').addEventListener('click', async function() {
+                try {
+                    const resp = await fetch('/api/start', {method: 'POST'});
+                    const data = await resp.json();
+                    if (!data.success) { alert(data.error || 'Failed to start'); }
+                } catch(e) { alert('Error: ' + e); }
+            });
+            
+            // Stop
+            document.getElementById('btnStop').addEventListener('click', async function() {
+                try { await fetch('/api/stop', {method: 'POST'}); } catch(e) {}
+            });
+            
+            // Add All Databases - THIS IS THE FIX!
+            document.getElementById('btnAddDb').addEventListener('click', async function() {
+                const input = document.getElementById('dbInput');
+                const text = input.value.trim();
+                if (!text) {
+                    alert('Please enter at least one database URL');
+                    return;
+                }
+                
+                // Split by newline or comma
+                const urls = text.split(/[\n,]+/).map(u => u.trim()).filter(u => u);
+                if (urls.length === 0) {
+                    alert('No valid URLs found');
+                    return;
+                }
+                
+                // Show progress
+                this.textContent = `⏳ Adding ${urls.length}...`;
+                this.disabled = true;
+                
+                try {
+                    const resp = await fetch('/api/databases/add', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({urls: urls})
+                    });
+                    const data = await resp.json();
+                    
+                    if (data.added > 0) {
+                        alert(`✅ Added ${data.added} databases\nTotal: ${data.total}`);
+                        input.value = '';
+                        loadDatabases();
+                    } else {
+                        alert('❌ No databases added. Check if URLs are valid.');
+                    }
+                } catch(e) {
+                    alert('❌ Error: ' + e);
+                } finally {
+                    this.textContent = '➕ Add All';
+                    this.disabled = false;
+                }
+            });
+            
+            // Fetch Devices
+            document.getElementById('btnFetchDevices').addEventListener('click', async function() {
+                try {
+                    const resp = await fetch('/api/fetch-devices', {method: 'POST'});
+                    const data = await resp.json();
+                    if (data.devices) {
+                        alert(`📡 Found ${data.count} devices from ${data.panel || 'panel'}\n\n${data.devices.map(d => `${d.phone} (${d.device.substring(0,12)}...)`).join('\n')}`);
+                    } else {
+                        alert('❌ No devices found: ' + (data.error || 'Unknown'));
+                    }
+                } catch(e) { alert('Error: ' + e); }
+            });
+            
+            // Next Panel
+            document.getElementById('btnNextPanel').addEventListener('click', async function() {
+                try {
+                    const resp = await fetch('/api/panels/next', {method: 'POST'});
+                    const data = await resp.json();
+                    if (data.success) {
+                        loadDatabases();
+                        alert(`✅ Switched to Panel ${data.index + 1}`);
+                    } else {
+                        alert('❌ No more panels');
+                    }
+                } catch(e) { alert('Error: ' + e); }
+            });
+            
+            // Clear Logs
+            document.getElementById('btnClearLogs').addEventListener('click', async function() {
+                try {
+                    await fetch('/api/clear/logs', {method: 'POST'});
+                    document.getElementById('logsContainer').innerHTML = '';
+                } catch(e) {}
+            });
+            
+            // Export
+            document.getElementById('btnExportAccounts').addEventListener('click', function() {
+                window.open('/api/export/accounts', '_blank');
+            });
+            document.getElementById('btnExportHits').addEventListener('click', function() {
+                window.open('/api/export/hits', '_blank');
+            });
+            
+            // Enter key for DB input
+            document.getElementById('dbInput').addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                    document.getElementById('btnAddDb').click();
+                }
+            });
+            
+            // Close modals on ESC
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    closeHitsModal();
+                    closeHitDetailModal();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
