@@ -1,747 +1,902 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FKCoinHunter - Web Panel</title>
-    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0a0e1a;
-            color: #e0e0e0;
-            height: 100vh;
-            overflow: hidden;
-        }
-        .container {
-            display: flex;
-            height: 100vh;
-            gap: 10px;
-            padding: 10px;
-        }
-        .sidebar {
-            width: 300px;
-            background: #141b2d;
-            border-radius: 12px;
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            overflow-y: auto;
-        }
-        .main { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-        .top-row { display: flex; gap: 10px; height: 50%; }
-        .bottom-row { display: flex; gap: 10px; height: 50%; }
-        .panel {
-            background: #141b2d;
-            border-radius: 12px;
-            padding: 15px;
-            overflow-y: auto;
-            flex: 1;
-        }
-        .panel-title {
-            font-size: 12px;
-            text-transform: uppercase;
-            color: #6b7a9f;
-            margin-bottom: 10px;
-            font-weight: bold;
-            letter-spacing: 1px;
-        }
-        .stat-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-        }
-        .stat-card {
-            background: #1a2338;
-            border-radius: 8px;
-            padding: 12px;
-            text-align: center;
-        }
-        .stat-value { font-size: 24px; font-weight: bold; color: #fff; }
-        .stat-label { font-size: 11px; color: #6b7a9f; margin-top: 4px; }
-        .stat-value.success { color: #4ade80; }
-        .stat-value.failed { color: #f87171; }
-        .stat-value.hit { color: #fbbf24; }
-        .stat-value.info { color: #60a5fa; }
-        
-        .btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 13px;
-        }
-        .btn:hover { opacity: 0.8; transform: scale(0.98); }
-        .btn-start { background: #22c55e; color: #fff; }
-        .btn-stop { background: #ef4444; color: #fff; }
-        .btn-primary { background: #3b82f6; color: #fff; }
-        .btn-success { background: #22c55e; color: #fff; }
-        .btn-danger { background: #ef4444; color: #fff; }
-        .btn-warning { background: #f59e0b; color: #fff; }
-        .btn-secondary { background: #4b5563; color: #fff; }
-        .btn-sm { padding: 4px 10px; font-size: 11px; }
-        
-        .logs-container {
-            height: 100%;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            line-height: 1.6;
-            background: #0a0e1a;
-            border-radius: 8px;
-            padding: 8px;
-        }
-        .log-entry { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
-        .log-entry .time { color: #6b7a9f; margin-right: 8px; }
-        .log-entry .msg { color: #c8d0e0; }
-        .log-entry .success { color: #4ade80; }
-        .log-entry .error { color: #f87171; }
-        .log-entry .warning { color: #fbbf24; }
-        .log-entry .hit { color: #fbbf24; font-weight: bold; background: rgba(251, 191, 36, 0.1); padding: 2px 6px; border-radius: 4px; display: inline-block; }
-        .log-entry .info { color: #60a5fa; }
-        
-        .number-list { display: flex; flex-wrap: wrap; gap: 4px; }
-        .number-chip {
-            background: #1a2338;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-family: monospace;
-        }
-        .number-chip.success { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
-        .number-chip.failed { background: rgba(248, 113, 113, 0.2); color: #f87171; }
-        .number-chip.hit { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
-        .number-chip.processing { background: rgba(96, 165, 250, 0.2); color: #60a5fa; }
-        
-        .status-indicator {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            margin-right: 6px;
-        }
-        .status-indicator.running { background: #4ade80; animation: pulse 1s infinite; }
-        .status-indicator.stopped { background: #6b7a9f; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        
-        .controls { display: flex; gap: 8px; flex-wrap: wrap; }
-        
-        .hit-notification {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(251, 191, 36, 0.95);
-            color: #0a0e1a;
-            padding: 16px 24px;
-            border-radius: 12px;
-            font-weight: bold;
-            box-shadow: 0 10px 40px rgba(251, 191, 36, 0.3);
-            animation: slideIn 0.5s ease;
-            z-index: 1000;
-            max-width: 350px;
-        }
-        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        
-        .db-list { font-size: 12px; font-family: monospace; max-height: 120px; overflow-y: auto; }
-        .db-item {
-            padding: 4px 8px;
-            margin: 2px 0;
-            border-radius: 4px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #0a0e1a;
-        }
-        .db-item.active { background: rgba(59, 130, 246, 0.2); border-left: 3px solid #3b82f6; }
-        .db-url { font-size: 10px; color: #6b7a9f; word-break: break-all; flex: 1; margin-right: 8px; }
-        
-        .recent-list { font-size: 12px; }
-        .recent-item { padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; }
-        .recent-item .phone { font-family: monospace; }
-        .recent-item .balance { font-weight: bold; }
-        .recent-item .balance.hit { color: #fbbf24; }
-        
-        .flex { display: flex; }
-        .flex-col { flex-direction: column; }
-        .gap-2 { gap: 8px; }
-        .gap-4 { gap: 16px; }
-        .items-center { align-items: center; }
-        .justify-between { justify-content: space-between; }
-        .mt-2 { margin-top: 8px; }
-        .mb-2 { margin-bottom: 8px; }
-        .w-full { width: 100%; }
-        .text-center { text-align: center; }
-        
-        .scrollbar::-webkit-scrollbar { width: 4px; }
-        .scrollbar::-webkit-scrollbar-track { background: #0a0e1a; }
-        .scrollbar::-webkit-scrollbar-thumb { background: #1a2338; border-radius: 2px; }
-        
-        textarea {
-            width: 100%;
-            padding: 8px;
-            border-radius: 4px;
-            border: 1px solid #1a2338;
-            background: #0a0e1a;
-            color: #e0e0e0;
-            font-size: 11px;
-            font-family: monospace;
-            resize: vertical;
-            min-height: 60px;
-        }
-        textarea:focus { outline: none; border-color: #3b82f6; }
-        
-        /* Modal styles */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.85);
-            z-index: 1000;
-            overflow-y: auto;
-            padding: 20px;
-        }
-        .modal-content {
-            max-width: 800px;
-            margin: 30px auto;
-            background: #141b2d;
-            border-radius: 12px;
-            padding: 25px;
-        }
-        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .modal-header h2 { color: #fbbf24; }
-        .modal-close { background: transparent; border: none; color: #fff; font-size: 28px; cursor: pointer; }
-        .modal-close:hover { color: #f87171; }
-        
-        .hit-item {
-            background: #1a2338;
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 8px;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: background 0.2s;
-        }
-        .hit-item:hover { background: #2a3350; }
-        .hit-item .phone { font-weight: bold; color: #fff; }
-        .hit-item .balance { color: #fbbf24; font-weight: bold; }
-        .hit-item .username { color: #6b7a9f; font-size: 12px; }
-        .hit-item .device { color: #4b5a7f; font-size: 10px; font-family: monospace; }
-        .hit-item .arrow { color: #fbbf24; }
-        
-        .detail-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            background: #1a2338;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
-        }
-        .detail-grid .label { color: #6b7a9f; }
-        .detail-grid .value { color: #fff; }
-        
-        .message-item {
-            background: #1a2338;
-            border-radius: 6px;
-            padding: 10px;
-            margin-bottom: 6px;
-        }
-        .message-item .sender { color: #60a5fa; font-weight: bold; }
-        .message-item .timestamp { color: #6b7a9f; font-size: 11px; }
-        .message-item .text { color: #c8d0e0; font-size: 13px; margin-top: 4px; word-wrap: break-word; }
-        
-        @media (max-width: 768px) {
-            .container { flex-direction: column; }
-            .sidebar { width: 100%; height: 40vh; }
-            .top-row, .bottom-row { flex-direction: column; height: auto; }
-            .top-row .panel, .bottom-row .panel { height: 300px; }
-            .stat-grid { grid-template-columns: 1fr 1fr; }
-            .detail-grid { grid-template-columns: 1fr; }
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
+  <title>FKCoinHunter · GOD VERSION</title>
+  <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+  <style>
+    /* ─── reset ─── */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #080c18;
+      color: #e8edf5;
+      min-height: 100vh;
+      padding: 20px;
+      background-image: 
+        radial-gradient(ellipse at 10% 20%, rgba(88, 80, 200, 0.15) 0%, transparent 60%),
+        radial-gradient(ellipse at 90% 80%, rgba(251, 191, 36, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 50%, rgba(30, 58, 138, 0.10) 0%, transparent 70%);
+      background-attachment: fixed;
+    }
+
+    /* scroll */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: rgba(255,255,255,0.03); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #fbbf24, #f59e0b); border-radius: 10px; }
+
+    .app { max-width: 1480px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+
+    /* ─── glass premium ─── */
+    .glass {
+      background: rgba(14, 22, 44, 0.65);
+      backdrop-filter: blur(18px) saturate(1.2);
+      -webkit-backdrop-filter: blur(18px) saturate(1.2);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 32px;
+      padding: 22px 26px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      transition: border-color 0.3s;
+    }
+    .glass:hover { border-color: rgba(255, 255, 255, 0.09); }
+
+    /* ─── header ─── */
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      background: rgba(8, 12, 28, 0.75);
+      backdrop-filter: blur(20px) saturate(1.3);
+      -webkit-backdrop-filter: blur(20px) saturate(1.3);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 48px;
+      padding: 10px 28px;
+      box-shadow: 0 20px 40px -12px rgba(0,0,0,0.6);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .brand-icon {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, #fbbf24, #f59e0b);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 8px 24px rgba(251, 191, 36, 0.25);
+    }
+    .brand h1 {
+      font-size: 1.7rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #fbbf24 100%);
+      background-size: 200% 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: shimmer 4s ease-in-out infinite;
+      letter-spacing: -0.5px;
+    }
+    @keyframes shimmer {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+    .brand .badge {
+      background: rgba(251, 191, 36, 0.12);
+      border: 1px solid rgba(251, 191, 36, 0.15);
+      padding: 3px 16px;
+      border-radius: 40px;
+      font-size: 0.6rem;
+      font-weight: 600;
+      color: #fbbf24;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .header-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ─── buttons ─── */
+    .btn {
+      padding: 9px 22px;
+      border: none;
+      border-radius: 40px;
+      font-weight: 600;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255,255,255,0.05);
+      color: #b8c8e8;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      letter-spacing: 0.3px;
+      position: relative;
+      overflow: hidden;
+    }
+    .btn::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,0.05), transparent);
+      pointer-events: none;
+    }
+    .btn:hover { transform: translateY(-2px) scale(0.97); filter: brightness(1.15); }
+    .btn:active { transform: scale(0.94); }
+    .btn-primary { background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; box-shadow: 0 8px 24px rgba(59, 130, 246, 0.3); }
+    .btn-success { background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff; box-shadow: 0 8px 24px rgba(34, 197, 94, 0.3); }
+    .btn-danger { background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; box-shadow: 0 8px 24px rgba(239, 68, 68, 0.3); }
+    .btn-warning { background: linear-gradient(135deg, #fbbf24, #f59e0b); color: #0b0f1a; box-shadow: 0 8px 24px rgba(251, 191, 36, 0.3); }
+    .btn-ghost { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); color: #9aacd0; }
+    .btn-sm { padding: 4px 14px; font-size: 0.62rem; }
+    .btn:disabled { opacity: 0.3; pointer-events: none; transform: none !important; }
+
+    .btn-glow {
+      position: relative;
+    }
+    .btn-glow::before {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: 42px;
+      padding: 2px;
+      background: linear-gradient(135deg, #fbbf24, #f59e0b, #fbbf24);
+      background-size: 200% 200%;
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      animation: borderSpin 3s linear infinite;
+      opacity: 0.4;
+    }
+    @keyframes borderSpin { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+
+    .logout-btn {
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      padding: 4px 16px;
+      border-radius: 40px;
+      font-size: 0.65rem;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    .logout-btn:hover { background: rgba(239, 68, 68, 0.18); }
+
+    /* ─── grid ─── */
+    .grid {
+      display: grid;
+      grid-template-columns: 320px 1fr 340px;
+      gap: 18px;
+    }
+
+    .card-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #6a7fa8;
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 14px;
+    }
+    .card-title span {
+      background: rgba(255,255,255,0.03);
+      padding: 2px 14px;
+      border-radius: 30px;
+      font-size: 0.55rem;
+      color: #7a8fb8;
+    }
+
+    /* ─── stats ─── */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .stat-item {
+      background: rgba(6, 10, 24, 0.5);
+      border-radius: 18px;
+      padding: 14px 8px;
+      text-align: center;
+      border: 1px solid rgba(255,255,255,0.03);
+      transition: 0.3s;
+    }
+    .stat-item:hover { border-color: rgba(255,255,255,0.06); }
+    .stat-value {
+      font-size: 1.8rem;
+      font-weight: 800;
+      line-height: 1.2;
+      letter-spacing: -0.5px;
+    }
+    .stat-value.green { color: #4ade80; }
+    .stat-value.red { color: #f87171; }
+    .stat-value.gold { color: #fbbf24; text-shadow: 0 0 30px rgba(251, 191, 36, 0.15); }
+    .stat-value.blue { color: #60a5fa; }
+    .stat-label {
+      font-size: 0.55rem;
+      color: #5a6f98;
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      box-shadow: 0 0 12px rgba(74, 222, 128, 0.2);
+    }
+    .status-dot.running {
+      background: #4ade80;
+      animation: pulse 1.2s infinite;
+      box-shadow: 0 0 20px rgba(74, 222, 128, 0.3);
+    }
+    .status-dot.stopped {
+      background: #4b5a7f;
+      box-shadow: none;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.75); }
+    }
+
+    .flex-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .flex-between {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .mt-2 { margin-top: 14px; }
+    .gap-1 { gap: 6px; }
+    .text-muted { color: #5a6f98; font-size: 0.7rem; }
+    .text-gold { color: #fbbf24; }
+
+    /* ─── logs ─── */
+    .logs-box {
+      max-height: 190px;
+      overflow-y: auto;
+      background: rgba(4, 8, 18, 0.6);
+      border-radius: 18px;
+      padding: 10px 14px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.68rem;
+      line-height: 1.8;
+      border: 1px solid rgba(255,255,255,0.03);
+    }
+    .log-entry {
+      border-bottom: 1px solid rgba(255,255,255,0.02);
+      padding: 2px 0;
+      display: flex;
+      gap: 10px;
+    }
+    .log-entry .time {
+      color: #3a4a6a;
+      min-width: 62px;
+      font-size: 0.6rem;
+    }
+    .log-entry .msg {
+      color: #b8c8e8;
+      word-break: break-word;
+    }
+    .log-entry .msg.success { color: #4ade80; }
+    .log-entry .msg.error { color: #f87171; }
+    .log-entry .msg.warning { color: #fbbf24; }
+    .log-entry .msg.hit { color: #fbbf24; font-weight: 700; text-shadow: 0 0 20px rgba(251, 191, 36, 0.1); }
+
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+    .chip {
+      background: rgba(4, 8, 18, 0.5);
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 30px;
+      padding: 2px 12px;
+      font-size: 0.6rem;
+      font-family: monospace;
+      color: #8a9fc8;
+      transition: 0.2s;
+    }
+    .chip.hit { border-color: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .chip.processing { border-color: rgba(96, 165, 250, 0.2); color: #60a5fa; animation: pulse 1.5s infinite; }
+
+    /* ─── db items ─── */
+    .db-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(4, 8, 18, 0.4);
+      padding: 6px 14px;
+      border-radius: 30px;
+      margin-bottom: 4px;
+      font-size: 0.68rem;
+      border-left: 3px solid transparent;
+      transition: 0.3s;
+    }
+    .db-item.active {
+      border-left-color: #fbbf24;
+      background: rgba(251, 191, 36, 0.05);
+    }
+    .db-item:hover { background: rgba(255,255,255,0.03); }
+    .db-url {
+      word-break: break-all;
+      max-width: 160px;
+      color: #8a9fc8;
+      font-family: monospace;
+      font-size: 0.58rem;
+    }
+
+    textarea {
+      width: 100%;
+      background: rgba(4, 8, 18, 0.6);
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 20px;
+      padding: 12px 16px;
+      color: #e8edf5;
+      font-size: 0.68rem;
+      font-family: monospace;
+      resize: vertical;
+      min-height: 52px;
+      transition: 0.3s;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: rgba(251, 191, 36, 0.2);
+      box-shadow: 0 0 30px rgba(251, 191, 36, 0.03);
+    }
+    textarea::placeholder { color: #3a4a6a; }
+
+    /* ─── hit items ─── */
+    .hit-item {
+      background: rgba(4, 8, 18, 0.4);
+      border-radius: 18px;
+      padding: 10px 14px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.03);
+      transition: 0.25s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .hit-item:hover {
+      background: rgba(20, 30, 55, 0.6);
+      border-color: rgba(251, 191, 36, 0.15);
+      transform: translateX(4px);
+    }
+
+    /* ─── modal ─── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      z-index: 999;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .modal-card {
+      max-width: 740px;
+      margin: 30px auto;
+      background: rgba(12, 20, 40, 0.95);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 36px;
+      padding: 32px;
+      box-shadow: 0 40px 80px rgba(0,0,0,0.8);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 22px;
+    }
+    .modal-header h2 {
+      font-size: 1.6rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #fbbf24, #f59e0b);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .modal-close {
+      background: rgba(255,255,255,0.04);
+      border: none;
+      color: #6a7fa8;
+      font-size: 26px;
+      cursor: pointer;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      transition: 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-close:hover { background: rgba(239, 68, 68, 0.15); color: #f87171; }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      background: rgba(4, 8, 18, 0.5);
+      border-radius: 20px;
+      padding: 18px;
+      margin-bottom: 18px;
+    }
+    .detail-grid .label {
+      color: #5a6f98;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .detail-grid .value {
+      color: #e8edf5;
+      font-weight: 500;
+      font-size: 0.9rem;
+    }
+
+    /* ─── toast ─── */
+    .toast {
+      position: fixed;
+      top: 28px;
+      right: 28px;
+      background: linear-gradient(135deg, #fbbf24, #f59e0b);
+      color: #0b0f1a;
+      padding: 16px 28px;
+      border-radius: 48px;
+      font-weight: 700;
+      box-shadow: 0 16px 48px rgba(251, 191, 36, 0.35);
+      z-index: 1200;
+      animation: slideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+      max-width: 380px;
+      font-size: 0.85rem;
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(60px) scale(0.9); }
+      to { opacity: 1; transform: translateX(0) scale(1); }
+    }
+
+    /* ─── responsive ─── */
+    @media (max-width: 1200px) {
+      .grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    @media (max-width: 768px) {
+      body { padding: 12px; }
+      .grid { grid-template-columns: 1fr; gap: 14px; }
+      .header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        border-radius: 28px;
+        padding: 16px 20px;
+      }
+      .header-actions {
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      .brand h1 { font-size: 1.3rem; }
+      .brand-icon { width: 36px; height: 36px; font-size: 18px; }
+      .stat-grid { grid-template-columns: 1fr 1fr; }
+      .detail-grid { grid-template-columns: 1fr; }
+      .db-url { max-width: 120px; }
+      .glass { padding: 16px; border-radius: 24px; }
+    }
+    @media (max-width: 480px) {
+      .btn { padding: 6px 14px; font-size: 0.65rem; }
+      .stat-value { font-size: 1.4rem; }
+      .modal-card { padding: 20px; margin: 10px; }
+      .toast { right: 12px; left: 12px; max-width: none; font-size: 0.75rem; padding: 14px 20px; }
+    }
+
+    /* ─── utility glow ─── */
+    .glow-gold {
+      box-shadow: 0 0 40px rgba(251, 191, 36, 0.04);
+    }
+    .border-glow {
+      border-image: linear-gradient(135deg, rgba(251, 191, 36, 0.1), transparent) 1;
+    }
+    .text-gradient {
+      background: linear-gradient(135deg, #fbbf24, #f59e0b);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+  </style>
 </head>
 <body>
-    <!-- Hit Notification -->
-    <div class="hit-notification" id="hitNotification" style="display:none;"></div>
 
-    <!-- Hits Modal -->
-    <div class="modal-overlay" id="hitsModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>⭐ HITS</h2>
-                <button class="modal-close" onclick="closeHitsModal()">✕</button>
-            </div>
-            <div id="hitsList"><div style="color:#6b7a9f; text-align:center; padding:20px;">Loading hits...</div></div>
+  <div class="app">
+
+    <!-- ─── HEADER ─── -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon">🦅</div>
+        <h1>FKCoinHunter</h1>
+        <span class="badge">✦ GOD VERSIONA</span>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-success btn-glow" id="btnStart">▶ Start</button>
+        <button class="btn btn-danger" id="btnStop" disabled>⏹ Stop</button>
+        <button class="btn btn-warning" id="btnShowHits">⭐ HITS</button>
+        <button class="btn btn-ghost btn-sm" id="btnNextPanel">⏭ Panel</button>
+        <span style="display:flex;align-items:center;gap:8px;font-size:0.75rem;">
+          <span class="status-dot stopped" id="statusDot"></span>
+          <span id="statusText" style="color:#6a7fa8;">Stopped</span>
+        </span>
+        <button class="logout-btn" id="btnLogout">✕ logout</button>
+      </div>
+    </header>
+
+    <!-- ─── GRID ─── -->
+    <div class="grid">
+
+      <!-- left: stats -->
+      <div class="glass glow-gold">
+        <div class="card-title">📊 statistics <span id="statWorkers">0 workers</span></div>
+        <div class="stat-grid">
+          <div class="stat-item"><div class="stat-value blue" id="statProcessed">0</div><div class="stat-label">processed</div></div>
+          <div class="stat-item"><div class="stat-value green" id="statSuccess">0</div><div class="stat-label">success</div></div>
+          <div class="stat-item"><div class="stat-value red" id="statFailed">0</div><div class="stat-label">failed</div></div>
+          <div class="stat-item"><div class="stat-value gold" id="statHits">0</div><div class="stat-label">⭐ hits</div></div>
         </div>
+        <div class="flex-between mt-2" style="font-size:0.8rem;">
+          <span>💰 total FK <strong id="statBalance" class="text-gold">0</strong></span>
+          <span>📱 accounts <strong id="statAccounts">0</strong></span>
+          <span>📡 panel <strong id="currentPanel" style="color:#60a5fa;">None</strong></span>
+        </div>
+        <div class="flex-row mt-2" style="gap:12px;">
+          <span class="text-muted">OTP stan <span id="statOtpStan" style="color:#b8c8e8;">0</span></span>
+          <span class="text-muted">fallback <span id="statOtpFallback" style="color:#b8c8e8;">0</span></span>
+          <span class="text-muted">400 <span id="statHttp400" style="color:#b8c8e8;">0</span></span>
+          <span class="text-muted">rate <span id="statRate" style="color:#4ade80;">0%</span></span>
+        </div>
+      </div>
+
+      <!-- middle: logs + numbers -->
+      <div class="glass" style="display:flex;flex-direction:column;">
+        <div class="card-title">📡 live feed <span><button class="btn btn-ghost btn-sm" id="btnClearLogs">clear</button></span></div>
+        <div class="logs-box" id="logsContainer"><div class="text-muted" style="padding:20px;text-align:center;">awaiting activity …</div></div>
+        <div class="flex-row mt-2">
+          <span class="text-muted" style="font-size:0.6rem;">📋 recent numbers</span>
+          <div class="chip-list" id="numberList"><span class="text-muted" style="font-size:0.6rem;">none</span></div>
+        </div>
+      </div>
+
+      <!-- right: databases + hits -->
+      <div class="glass">
+        <div class="card-title">📡 databases <span id="dbCount">0</span></div>
+        <div id="dbList" style="max-height:110px;overflow-y:auto;font-size:0.7rem;"><div class="text-muted" style="padding:8px;">no databases</div></div>
+        <textarea id="dbInput" placeholder="Add URLs, one per line&#10;https://project1.firebaseio.com/"></textarea>
+        <div class="flex-row" style="margin-top:8px;gap:4px;">
+          <button class="btn btn-primary btn-sm" id="btnAddDb">➕ add</button>
+          <button class="btn btn-ghost btn-sm" id="btnFetchDevices">📡 fetch</button>
+          <button class="btn btn-ghost btn-sm" id="btnExportAccounts">📤 acc</button>
+          <button class="btn btn-ghost btn-sm" id="btnExportHits">⭐ hits</button>
+        </div>
+        <div class="mt-2">
+          <div class="card-title" style="margin-bottom:4px;">⭐ recent hits</div>
+          <div id="recentHits" style="max-height:110px;overflow-y:auto;font-size:0.7rem;"><div class="text-muted" style="padding:6px;">no hits yet</div></div>
+        </div>
+      </div>
+
     </div>
 
-    <!-- Hit Detail Modal -->
-    <div class="modal-overlay" id="hitDetailModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>📱 Hit Details</h2>
-                <button class="modal-close" onclick="closeHitDetailModal()">✕</button>
-            </div>
-            <div id="hitDetailContent"><div style="color:#6b7a9f; text-align:center; padding:20px;">Loading...</div></div>
-        </div>
+    <!-- ─── bottom: recent accounts ─── -->
+    <div class="glass">
+      <div class="card-title">📱 recent accounts <span>last 10</span></div>
+      <div id="recentAccounts" style="display:flex;flex-wrap:wrap;gap:8px;font-size:0.75rem;max-height:90px;overflow-y:auto;">
+        <div class="text-muted" style="padding:6px;">no accounts</div>
+      </div>
     </div>
 
-    <div class="container">
-        <!-- Sidebar -->
-        <div class="sidebar scrollbar">
-            <div>
-                <h2 style="color: #fbbf24; font-size: 20px;">🦅 FKCoinHunter</h2>
-                <div style="font-size: 12px; color: #6b7a9f;">Web Panel</div>
-            </div>
-            
-            <div class="controls">
-                <button class="btn btn-start" id="btnStart">▶ Start</button>
-                <button class="btn btn-stop" id="btnStop">⏹ Stop</button>
-                <button class="btn btn-warning" onclick="showHits()">⭐ HITS</button>
-            </div>
-            
-            <div class="stat-grid">
-                <div class="stat-card"><div class="stat-value info" id="statProcessed">0</div><div class="stat-label">Processed</div></div>
-                <div class="stat-card"><div class="stat-value success" id="statSuccess">0</div><div class="stat-label">Successful</div></div>
-                <div class="stat-card"><div class="stat-value failed" id="statFailed">0</div><div class="stat-label">Failed</div></div>
-                <div class="stat-card"><div class="stat-value hit" id="statHits">0</div><div class="stat-label">⭐ HITS</div></div>
-            </div>
-            
-            <div style="font-size: 13px;">
-                <div class="flex justify-between"><span>💰 Total FK</span><span id="statBalance">0</span></div>
-                <div class="flex justify-between"><span>📱 Accounts</span><span id="statAccounts">0</span></div>
-                <div class="flex justify-between"><span>📡 Status</span><span><span class="status-indicator stopped" id="statusIndicator"></span><span id="statusText">Stopped</span></span></div>
-                <div class="flex justify-between"><span>🔧 Workers</span><span id="statWorkers">0</span></div>
-                <div class="flex justify-between"><span>📡 Panel</span><span id="currentPanel">None</span></div>
-            </div>
-            
-            <div>
-                <div class="panel-title">📡 Databases (<span id="dbCount">0</span>)</div>
-                <div class="db-list" id="dbList"><div style="color:#6b7a9f; font-size:12px;">No databases added</div></div>
-                <div style="margin-top: 8px;">
-                    <textarea id="dbInput" placeholder="Add multiple database URLs, one per line&#10;https://project1.firebaseio.com/&#10;https://project2.firebaseio.com/"></textarea>
-                    <div style="display:flex; gap:4px; margin-top:4px; flex-wrap:wrap;">
-                        <button class="btn btn-primary btn-sm" id="btnAddDb" style="flex:1;">➕ Add All</button>
-                        <button class="btn btn-secondary btn-sm" id="btnFetchDevices">📡 Fetch</button>
-                        <button class="btn btn-secondary btn-sm" id="btnNextPanel">⏭️ Next</button>
-                    </div>
-                </div>
-            </div>
-            
-            <div>
-                <div class="panel-title">📋 Recent Numbers</div>
-                <div class="number-list" id="numberList"><span style="color:#6b7a9f; font-size:12px;">No numbers yet</span></div>
-            </div>
-        </div>
-        
-        <!-- Main -->
-        <div class="main">
-            <div class="top-row">
-                <div class="panel">
-                    <div class="flex justify-between items-center">
-                        <div class="panel-title">📊 Live Logs</div>
-                        <button class="btn btn-sm btn-danger" id="btnClearLogs">Clear</button>
-                    </div>
-                    <div class="logs-container scrollbar" id="logsContainer"><div style="color:#6b7a9f; text-align:center; padding:20px;">Waiting for activity...</div></div>
-                </div>
-                <div class="panel" style="max-width:300px;">
-                    <div class="panel-title">⭐ Recent Hits</div>
-                    <div class="recent-list" id="recentHits"><div style="color:#6b7a9f; font-size:12px;">No hits yet</div></div>
-                </div>
-            </div>
-            <div class="bottom-row">
-                <div class="panel">
-                    <div class="panel-title">📱 Recent Accounts</div>
-                    <div class="recent-list" id="recentAccounts"><div style="color:#6b7a9f; font-size:12px;">No accounts yet</div></div>
-                </div>
-                <div class="panel" style="max-width:300px;">
-                    <div class="panel-title">💰 Statistics</div>
-                    <div style="font-size:12px; line-height:2;">
-                        <div class="flex justify-between"><span>OTP (STAN):</span><span id="statOtpStan">0</span></div>
-                        <div class="flex justify-between"><span>OTP (Fallback):</span><span id="statOtpFallback">0</span></div>
-                        <div class="flex justify-between"><span>HTTP 400:</span><span id="statHttp400">0</span></div>
-                        <div class="flex justify-between"><span>Already Reg:</span><span id="statAlreadyReg">0</span></div>
-                        <div class="flex justify-between"><span>No OTP:</span><span id="statNoOtp">0</span></div>
-                        <div class="flex justify-between"><span>Saved Accounts:</span><span id="statSaved">0</span></div>
-                        <hr style="border-color:#1a2338; margin:4px 0;">
-                        <div class="flex justify-between"><span>📈 Success Rate:</span><span id="statRate">0%</span></div>
-                    </div>
-                    <div style="margin-top:8px; display:flex; gap:4px; flex-wrap:wrap;">
-                        <button class="btn btn-sm btn-primary" id="btnExportAccounts">📤 Accounts</button>
-                        <button class="btn btn-sm btn-warning" id="btnExportHits">⭐ Hits</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+  </div>
 
-    <script>
-        let socket = null;
-        
-        function connectSocket() {
-            socket = io();
-            socket.on('connect', function() { console.log('WebSocket connected'); });
-            socket.on('status_update', function(data) { updateUI(data); });
-            socket.on('new_log', function(log) { addLog(log); });
-            socket.on('new_hit', function(data) {
-                showHitNotification(`⭐ HIT! ${data.phone} | ${data.balance} FK`);
-                if (document.getElementById('hitsModal').style.display === 'block') { loadHits(); }
-            });
-            socket.on('disconnect', function() { setTimeout(connectSocket, 2000); });
+  <!-- ─── toast ─── -->
+  <div id="toast" style="display:none;" class="toast"></div>
+
+  <!-- ─── Hits modal ─── -->
+  <div class="modal-overlay" id="hitsModal">
+    <div class="modal-card">
+      <div class="modal-header"><h2>⭐ HITS</h2><button class="modal-close" onclick="closeHitsModal()">✕</button></div>
+      <div id="hitsList"><div class="text-muted" style="padding:30px;text-align:center;">loading hits …</div></div>
+    </div>
+  </div>
+
+  <!-- ─── Hit detail modal ─── -->
+  <div class="modal-overlay" id="hitDetailModal">
+    <div class="modal-card">
+      <div class="modal-header"><h2>📱 detail</h2><button class="modal-close" onclick="closeHitDetailModal()">✕</button></div>
+      <div id="hitDetailContent"><div class="text-muted" style="padding:30px;text-align:center;">loading …</div></div>
+    </div>
+  </div>
+
+  <script>
+    // ─── socket ───
+    let socket = null;
+    let userId = null;
+
+    function connectSocket() {
+      socket = io();
+      socket.on('connect', () => console.log('socket connected'));
+      socket.on('connected', (data) => { userId = data.user_id; console.log('user:', userId); });
+      socket.on('status_update', data => updateUI(data));
+      socket.on('new_log', log => addLog(log));
+      socket.on('new_hit', data => {
+        showToast(`⭐ HIT! ${data.phone} | ${data.balance} FK`);
+        if (document.getElementById('hitsModal').style.display === 'block') loadHits();
+      });
+      socket.on('disconnect', () => setTimeout(connectSocket, 2000));
+    }
+
+    // ─── UI update ───
+    function updateUI(data) {
+      document.getElementById('statProcessed').textContent = data.total_processed || 0;
+      document.getElementById('statSuccess').textContent = data.successful || 0;
+      document.getElementById('statFailed').textContent = data.failed || 0;
+      document.getElementById('statHits').textContent = data.hits || 0;
+      document.getElementById('statBalance').textContent = data.total_balance || 0;
+      document.getElementById('statAccounts').textContent = data.recent_accounts ? data.recent_accounts.length : 0;
+      document.getElementById('statWorkers').textContent = (data.active_workers || 0) + ' workers';
+      document.getElementById('currentPanel').textContent = data.current_panel || 'None';
+
+      const dot = document.getElementById('statusDot');
+      const txt = document.getElementById('statusText');
+      if (data.running) {
+        dot.className = 'status-dot running';
+        txt.textContent = 'Running';
+        txt.style.color = '#4ade80';
+        document.getElementById('btnStart').disabled = true;
+        document.getElementById('btnStop').disabled = false;
+      } else {
+        dot.className = 'status-dot stopped';
+        txt.textContent = 'Stopped';
+        txt.style.color = '#6a7fa8';
+        document.getElementById('btnStart').disabled = false;
+        document.getElementById('btnStop').disabled = true;
+      }
+
+      const numList = document.getElementById('numberList');
+      if (data.numbers_found && data.numbers_found.length) {
+        numList.innerHTML = data.numbers_found.slice(0, 18).map(n =>
+          `<span class="chip ${n === data.current_number ? 'processing' : ''}">${n}</span>`
+        ).join('');
+        if (data.numbers_found.length > 18) numList.innerHTML += `<span class="chip">+${data.numbers_found.length - 18}</span>`;
+      } else numList.innerHTML = '<span class="text-muted" style="font-size:0.6rem;">none</span>';
+
+      const acc = document.getElementById('recentAccounts');
+      if (data.recent_accounts && data.recent_accounts.length) {
+        acc.innerHTML = data.recent_accounts.slice(-10).reverse().map(a =>
+          `<span style="background:rgba(4,8,18,0.4);padding:4px 16px;border-radius:30px;border:1px solid rgba(255,255,255,0.03);font-size:0.7rem;">
+            ${a.is_hit ? '⭐' : '📱'} ${a.phone} <strong style="color:${a.is_hit ? '#fbbf24' : '#8a9fc8'};">${a.balance} FK</strong>
+            <span class="text-muted" style="font-size:0.55rem;">${a.time}</span>
+          </span>`
+        ).join('');
+      } else acc.innerHTML = '<div class="text-muted" style="padding:6px;">no accounts</div>';
+
+      const rh = document.getElementById('recentHits');
+      if (data.recent_hits && data.recent_hits.length) {
+        rh.innerHTML = data.recent_hits.slice(-6).reverse().map(h =>
+          `<div style="background:rgba(4,8,18,0.4);padding:4px 12px;border-radius:30px;margin-bottom:3px;display:flex;justify-content:space-between;border:1px solid rgba(255,255,255,0.03);">
+            <span>⭐ ${h.phone}</span>
+            <span style="color:#fbbf24;font-weight:700;">${h.balance} FK</span>
+            <span class="text-muted" style="font-size:0.55rem;">${h.time}</span>
+          </div>`
+        ).join('');
+      } else rh.innerHTML = '<div class="text-muted" style="padding:6px;">no hits</div>';
+
+      if (data.stats) {
+        document.getElementById('statOtpStan').textContent = data.stats.otp_found_stan || 0;
+        document.getElementById('statOtpFallback').textContent = data.stats.otp_found_fallback || 0;
+        document.getElementById('statHttp400').textContent = data.stats.http_400_errors || 0;
+        const rate = data.total_processed > 0 ? ((data.successful / data.total_processed) * 100).toFixed(1) : 0;
+        document.getElementById('statRate').textContent = rate + '%';
+      }
+    }
+
+    function addLog(log) {
+      const c = document.getElementById('logsContainer');
+      if (c.querySelector('.text-muted')) c.innerHTML = '';
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      const time = log.timestamp || new Date().toLocaleTimeString();
+      const cls = log.type || 'info';
+      entry.innerHTML = `<span class="time">${time}</span><span class="msg ${cls}">${log.message}</span>`;
+      c.appendChild(entry);
+      c.scrollTop = c.scrollHeight;
+      while (c.children.length > 300) c.removeChild(c.firstChild);
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 4500);
+    }
+
+    // ─── modals ───
+    function closeHitsModal() { document.getElementById('hitsModal').style.display = 'none'; }
+    function closeHitDetailModal() { document.getElementById('hitDetailModal').style.display = 'none'; }
+
+    async function loadHits() {
+      try {
+        const res = await fetch('/api/hits');
+        const hits = await res.json();
+        const container = document.getElementById('hitsList');
+        if (!hits || hits.length === 0) {
+          container.innerHTML = '<div class="text-muted" style="padding:30px;text-align:center;">no hits yet (≥75 FK)</div>';
+        } else {
+          container.innerHTML = hits.map((hit, i) => `
+            <div class="hit-item" onclick="showHitDetail(${i})">
+              <div>
+                <div style="font-weight:700;">📱 ${hit.phone}</div>
+                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
+                  <span style="color:#fbbf24;font-weight:700;">💰 ${hit.fk_balance} FK</span>
+                  <span class="text-muted">👤 ${hit.username}</span>
+                  <span class="text-muted" style="font-size:0.55rem;">📡 ${hit.device_id ? hit.device_id.substring(0,10)+'…' : 'N/A'}</span>
+                </div>
+              </div>
+              <span style="color:#fbbf24;">➡️</span>
+            </div>
+          `).join('');
         }
-        
-        function updateUI(data) {
-            document.getElementById('statProcessed').textContent = data.total_processed || 0;
-            document.getElementById('statSuccess').textContent = data.successful || 0;
-            document.getElementById('statFailed').textContent = data.failed || 0;
-            document.getElementById('statHits').textContent = data.hits || 0;
-            document.getElementById('statBalance').textContent = data.total_balance || 0;
-            document.getElementById('statAccounts').textContent = data.recent_accounts ? data.recent_accounts.length : 0;
-            document.getElementById('statWorkers').textContent = data.active_workers || 0;
-            document.getElementById('currentPanel').textContent = data.current_panel || 'None';
-            
-            const indicator = document.getElementById('statusIndicator');
-            const statusText = document.getElementById('statusText');
-            if (data.running) {
-                indicator.className = 'status-indicator running';
-                statusText.textContent = 'Running';
-                document.getElementById('btnStart').disabled = true;
-                document.getElementById('btnStop').disabled = false;
-            } else {
-                indicator.className = 'status-indicator stopped';
-                statusText.textContent = 'Stopped';
-                document.getElementById('btnStart').disabled = false;
-                document.getElementById('btnStop').disabled = true;
-            }
-            
-            const numberList = document.getElementById('numberList');
-            if (data.numbers_found && data.numbers_found.length > 0) {
-                numberList.innerHTML = data.numbers_found.slice(0, 20).map(n => 
-                    `<span class="number-chip ${n === data.current_number ? 'processing' : ''}">${n}</span>`
-                ).join('');
-                if (data.numbers_found.length > 20) {
-                    numberList.innerHTML += `<span class="number-chip">+${data.numbers_found.length - 20} more</span>`;
-                }
-            }
-            
-            const recentAccounts = document.getElementById('recentAccounts');
-            if (data.recent_accounts && data.recent_accounts.length > 0) {
-                recentAccounts.innerHTML = data.recent_accounts.slice(-10).reverse().map(a => `
-                    <div class="recent-item">
-                        <span class="phone">${a.is_hit ? '⭐' : '📱'} ${a.phone}</span>
-                        <span class="balance ${a.is_hit ? 'hit' : ''}">${a.balance} FK</span>
-                        <span style="color:#6b7a9f;font-size:10px;">${a.time}</span>
-                    </div>
-                `).join('');
-            }
-            
-            const recentHits = document.getElementById('recentHits');
-            if (data.recent_hits && data.recent_hits.length > 0) {
-                recentHits.innerHTML = data.recent_hits.slice(-10).reverse().map(h => `
-                    <div class="recent-item">
-                        <span class="phone">⭐ ${h.phone}</span>
-                        <span class="balance hit">${h.balance} FK</span>
-                        <span style="color:#6b7a9f;font-size:10px;">${h.time}</span>
-                    </div>
-                `).join('');
-            }
-            
-            if (data.stats) {
-                document.getElementById('statOtpStan').textContent = data.stats.otp_found_stan || 0;
-                document.getElementById('statOtpFallback').textContent = data.stats.otp_found_fallback || 0;
-                document.getElementById('statHttp400').textContent = data.stats.http_400_errors || 0;
-                document.getElementById('statAlreadyReg').textContent = data.stats.already_registered || 0;
-                document.getElementById('statNoOtp').textContent = data.stats.no_otp || 0;
-                document.getElementById('statSaved').textContent = data.stats.saved_accounts || 0;
-                const rate = data.total_processed > 0 ? ((data.successful / data.total_processed) * 100).toFixed(1) : 0;
-                document.getElementById('statRate').textContent = rate + '%';
-            }
+      } catch (e) {
+        document.getElementById('hitsList').innerHTML = `<div style="color:#f87171;padding:20px;">error loading hits</div>`;
+      }
+    }
+
+    async function showHitDetail(index) {
+      const container = document.getElementById('hitDetailContent');
+      container.innerHTML = '<div class="text-muted" style="padding:30px;text-align:center;">loading …</div>';
+      document.getElementById('hitDetailModal').style.display = 'block';
+      try {
+        const res = await fetch(`/api/hits/${index}`);
+        const hit = await res.json();
+        container.innerHTML = `
+          <div class="detail-grid">
+            <div><span class="label">📱 phone</span><div class="value">${hit.phone}</div></div>
+            <div><span class="label">👤 username</span><div class="value">${hit.username}</div></div>
+            <div><span class="label">💰 balance</span><div class="value" style="color:#fbbf24;font-weight:700;">${hit.fk_balance} FK</div></div>
+            <div><span class="label">🆔 user ID</span><div class="value">${hit.user_id}</div></div>
+            <div><span class="label">📅 created</span><div class="value">${hit.created_at}</div></div>
+            <div><span class="label">📡 firebase</span><div class="value" style="font-size:0.65rem;word-break:break-all;">${hit.firebase_url || 'N/A'}</div></div>
+            <div style="grid-column:span 2;"><span class="label">🔑 device</span><div class="value" style="font-family:monospace;font-size:0.65rem;">${hit.device_id || 'N/A'}</div></div>
+          </div>
+          <div class="flex-row" style="margin-bottom:14px;">
+            <button class="btn btn-primary btn-sm" onclick="fetchHitMessages(${index})">📨 messages</button>
+            <button class="btn btn-ghost btn-sm" onclick="refreshHitMessages(${index})">🔄 refresh</button>
+            <button class="btn btn-ghost btn-sm" onclick="closeHitDetailModal()">🔙 back</button>
+          </div>
+          <div id="hitMessages" style="background:rgba(4,8,18,0.5);border-radius:20px;padding:14px;min-height:60px;">
+            <div class="text-muted" style="text-align:center;">click "messages" to load</div>
+          </div>
+        `;
+      } catch (e) {
+        container.innerHTML = `<div style="color:#f87171;padding:20px;">error loading detail</div>`;
+      }
+    }
+
+    async function fetchHitMessages(index) {
+      const c = document.getElementById('hitMessages');
+      c.innerHTML = '<div class="text-muted" style="text-align:center;">⏳ fetching …</div>';
+      try {
+        const res = await fetch(`/api/hits/${index}/messages`);
+        const msgs = await res.json();
+        if (!msgs || msgs.length === 0) {
+          c.innerHTML = '<div class="text-muted" style="text-align:center;">📭 no messages</div>';
+          return;
         }
-        
-        function addLog(log) {
-            const container = document.getElementById('logsContainer');
-            const entry = document.createElement('div');
-            entry.className = 'log-entry';
-            const time = log.timestamp || new Date().toLocaleTimeString();
-            const typeClass = log.type || 'info';
-            entry.innerHTML = `<span class="time">${time}</span><span class="msg ${typeClass}">${log.message}</span>`;
-            container.appendChild(entry);
-            container.scrollTop = container.scrollHeight;
-            while (container.children.length > 500) { container.removeChild(container.firstChild); }
+        c.innerHTML = msgs.map(m =>
+          `<div style="background:rgba(4,8,18,0.4);border-radius:16px;padding:8px 14px;margin-bottom:6px;">
+            <div style="display:flex;justify-content:space-between;font-size:0.65rem;"><span style="color:#60a5fa;">${m.sender || 'unknown'}</span><span class="text-muted">${m.timestamp || ''}</span></div>
+            <div style="font-size:0.8rem;margin-top:2px;">${m.text || ''}</div>
+          </div>`
+        ).join('');
+      } catch (e) { c.innerHTML = '<div style="color:#f87171;">error fetching messages</div>'; }
+    }
+    async function refreshHitMessages(index) {
+      const c = document.getElementById('hitMessages');
+      c.innerHTML = '<div class="text-muted" style="text-align:center;">🔄 refreshing …</div>';
+      try {
+        await fetch(`/api/hits/${index}/messages/refresh`, { method: 'POST' });
+        fetchHitMessages(index);
+      } catch (e) { c.innerHTML = '<div style="color:#f87171;">refresh error</div>'; }
+    }
+
+    // ─── DB ───
+    async function loadDatabases() {
+      try {
+        const res = await fetch('/api/databases');
+        const data = await res.json();
+        document.getElementById('dbCount').textContent = data.total || 0;
+        document.getElementById('currentPanel').textContent = data.current_panel || 'None';
+        const list = document.getElementById('dbList');
+        if (!data.databases || data.databases.length === 0) {
+          list.innerHTML = '<div class="text-muted" style="padding:8px;">no databases</div>';
+          return;
         }
-        
-        function showHitNotification(message) {
-            const el = document.getElementById('hitNotification');
-            el.textContent = message;
-            el.style.display = 'block';
-            setTimeout(() => { el.style.display = 'none'; }, 5000);
-        }
-        
-        // ============ HIT SYSTEM ============
-        function showHits() {
-            document.getElementById('hitsModal').style.display = 'block';
-            loadHits();
-        }
-        function closeHitsModal() { document.getElementById('hitsModal').style.display = 'none'; }
-        
-        function loadHits() {
-            fetch('/api/hits').then(res => res.json()).then(hits => {
-                const container = document.getElementById('hitsList');
-                if (!hits || hits.length === 0) {
-                    container.innerHTML = '<div style="color:#6b7a9f; text-align:center; padding:20px;">No hits found yet. (≥75 FK required)</div>';
-                } else {
-                    container.innerHTML = hits.map((hit, index) => `
-                        <div class="hit-item" onclick="showHitDetail(${index})">
-                            <div>
-                                <div class="phone">📱 ${hit.phone}</div>
-                                <div style="display:flex; gap:10px; margin-top:4px; flex-wrap:wrap;">
-                                    <span class="balance">💰 ${hit.fk_balance} FK</span>
-                                    <span class="username">👤 ${hit.username}</span>
-                                    <span class="device">📡 Device: ${hit.device_id ? hit.device_id.substring(0,12) + '...' : 'N/A'}</span>
-                                </div>
-                            </div>
-                            <div class="arrow">➡️</div>
-                        </div>
-                    `).join('');
-                }
-            }).catch(err => {
-                document.getElementById('hitsList').innerHTML = `<div style="color:#f87171; text-align:center; padding:20px;">❌ Error loading hits: ${err}</div>`;
-            });
-        }
-        
-        function showHitDetail(index) {
-            const container = document.getElementById('hitDetailContent');
-            container.innerHTML = '<div style="color:#6b7a9f; text-align:center; padding:20px;">Loading...</div>';
-            document.getElementById('hitDetailModal').style.display = 'block';
-            
-            fetch(`/api/hits/${index}`).then(res => res.json()).then(hit => {
-                container.innerHTML = `
-                    <div class="detail-grid">
-                        <div><span class="label">📱 Phone:</span> <span class="value">${hit.phone}</span></div>
-                        <div><span class="label">👤 Username:</span> <span class="value">${hit.username}</span></div>
-                        <div><span class="label">💰 Balance:</span> <span class="value" style="color:#fbbf24; font-weight:bold;">${hit.fk_balance} FK</span></div>
-                        <div><span class="label">🆔 User ID:</span> <span class="value">${hit.user_id}</span></div>
-                        <div><span class="label">📅 Created:</span> <span class="value">${hit.created_at}</span></div>
-                        <div><span class="label">📡 Firebase:</span> <span class="value" style="font-size:11px; word-break:break-all;">${hit.firebase_url || 'N/A'}</span></div>
-                        <div style="grid-column: span 2;"><span class="label">🔑 Device ID:</span> <span class="value" style="font-family:monospace; font-size:12px; word-break:break-all;">${hit.device_id || 'N/A'}</span></div>
-                    </div>
-                    <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
-                        <button class="btn btn-primary" onclick="fetchHitMessages(${index})">📨 Fetch Last 5 Messages</button>
-                        <button class="btn btn-warning" onclick="refreshHitMessages(${index})">🔄 Refresh</button>
-                        <button class="btn btn-secondary" onclick="closeHitDetailModal()">🔙 Back</button>
-                    </div>
-                    <div id="hitMessagesContainer" style="background:#0a0e1a; border-radius:8px; padding:15px; min-height:100px;">
-                        <div style="color:#6b7a9f; text-align:center;">Click "Fetch Last 5 Messages" to view messages from Firebase</div>
-                    </div>
-                `;
-            }).catch(err => {
-                container.innerHTML = `<div style="color:#f87171; text-align:center; padding:20px;">❌ Error loading hit details: ${err}</div>`;
-            });
-        }
-        function closeHitDetailModal() { document.getElementById('hitDetailModal').style.display = 'none'; }
-        
-        function fetchHitMessages(index) {
-            const container = document.getElementById('hitMessagesContainer');
-            container.innerHTML = '<div style="color:#6b7a9f; text-align:center; padding:20px;">⏳ Fetching messages from Firebase...</div>';
-            fetch(`/api/hits/${index}/messages`).then(res => res.json()).then(messages => displayMessages(container, messages))
-                .catch(err => { container.innerHTML = `<div style="color:#f87171; text-align:center; padding:20px;">❌ Error fetching messages: ${err}</div>`; });
-        }
-        
-        function refreshHitMessages(index) {
-            const container = document.getElementById('hitMessagesContainer');
-            container.innerHTML = '<div style="color:#6b7a9f; text-align:center; padding:20px;">🔄 Refreshing messages from Firebase...</div>';
-            fetch(`/api/hits/${index}/messages/refresh`, { method: 'POST' }).then(res => res.json()).then(messages => displayMessages(container, messages))
-                .catch(err => { container.innerHTML = `<div style="color:#f87171; text-align:center; padding:20px;">❌ Error refreshing messages: ${err}</div>`; });
-        }
-        
-        function displayMessages(container, messages) {
-            if (!messages || messages.length === 0) {
-                container.innerHTML = '<div style="color:#6b7a9f; text-align:center; padding:20px;">📭 No messages found for this device</div>';
-                return;
-            }
-            container.innerHTML = `
-                <div style="color:#fbbf24; font-weight:bold; margin-bottom:10px;">📨 Last ${messages.length} Messages:</div>
-                ${messages.map((msg, i) => `
-                    <div class="message-item">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span class="sender">${i+1}. 📩 ${msg.sender || 'Unknown'}</span>
-                            <span class="timestamp">⏰ ${msg.timestamp || 'N/A'}</span>
-                        </div>
-                        <div class="text">${msg.text || 'No message content'}</div>
-                    </div>
-                `).join('')}
-            `;
-        }
-        
-        // ============ DATABASE FUNCTIONS ============
-        async function loadDatabases() {
-            try {
-                const resp = await fetch('/api/databases');
-                const data = await resp.json();
-                const list = document.getElementById('dbList');
-                document.getElementById('dbCount').textContent = data.total || 0;
-                document.getElementById('currentPanel').textContent = data.current_panel || 'None';
-                
-                if (data.databases.length === 0) {
-                    list.innerHTML = '<div style="color:#6b7a9f;font-size:12px;">No databases added</div>';
-                    return;
-                }
-                list.innerHTML = data.databases.map((url, i) => `
-                    <div class="db-item ${i === data.current_index ? 'active' : ''}">
-                        <span class="db-url">${i+1}. ${url.substring(0, 50)}${url.length > 50 ? '...' : ''}</span>
-                        <div>
-                            ${i !== data.current_index ? `<button class="btn btn-sm btn-primary" onclick="selectDb(${i})">Select</button>` : ''}
-                            <button class="btn btn-sm btn-danger" onclick="deleteDb(${i})">✕</button>
-                        </div>
-                    </div>
-                `).join('');
-            } catch(e) { console.error('Failed to load databases:', e); }
-        }
-        
-        async function selectDb(index) {
-            try {
-                await fetch('/api/databases/select', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({index}) });
-                loadDatabases();
-            } catch(e) {}
-        }
-        
-        async function deleteDb(index) {
-            if (!confirm('Delete this database?')) return;
-            try {
-                await fetch('/api/databases/delete', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({index}) });
-                loadDatabases();
-            } catch(e) {}
-        }
-        
-        // ============ EVENT LISTENERS ============
-        document.addEventListener('DOMContentLoaded', function() {
-            connectSocket();
-            loadDatabases();
-            
-            // Start
-            document.getElementById('btnStart').addEventListener('click', async function() {
-                try {
-                    const resp = await fetch('/api/start', {method: 'POST'});
-                    const data = await resp.json();
-                    if (!data.success) { alert(data.error || 'Failed to start'); }
-                } catch(e) { alert('Error: ' + e); }
-            });
-            
-            // Stop
-            document.getElementById('btnStop').addEventListener('click', async function() {
-                try { await fetch('/api/stop', {method: 'POST'}); } catch(e) {}
-            });
-            
-            // Add All Databases - THIS IS THE FIX!
-            document.getElementById('btnAddDb').addEventListener('click', async function() {
-                const input = document.getElementById('dbInput');
-                const text = input.value.trim();
-                if (!text) {
-                    alert('Please enter at least one database URL');
-                    return;
-                }
-                
-                // Split by newline or comma
-                const urls = text.split(/[\n,]+/).map(u => u.trim()).filter(u => u);
-                if (urls.length === 0) {
-                    alert('No valid URLs found');
-                    return;
-                }
-                
-                // Show progress
-                this.textContent = `⏳ Adding ${urls.length}...`;
-                this.disabled = true;
-                
-                try {
-                    const resp = await fetch('/api/databases/add', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({urls: urls})
-                    });
-                    const data = await resp.json();
-                    
-                    if (data.added > 0) {
-                        alert(`✅ Added ${data.added} databases\nTotal: ${data.total}`);
-                        input.value = '';
-                        loadDatabases();
-                    } else {
-                        alert('❌ No databases added. Check if URLs are valid.');
-                    }
-                } catch(e) {
-                    alert('❌ Error: ' + e);
-                } finally {
-                    this.textContent = '➕ Add All';
-                    this.disabled = false;
-                }
-            });
-            
-            // Fetch Devices
-            document.getElementById('btnFetchDevices').addEventListener('click', async function() {
-                try {
-                    const resp = await fetch('/api/fetch-devices', {method: 'POST'});
-                    const data = await resp.json();
-                    if (data.devices) {
-                        alert(`📡 Found ${data.count} devices from ${data.panel || 'panel'}\n\n${data.devices.map(d => `${d.phone} (${d.device.substring(0,12)}...)`).join('\n')}`);
-                    } else {
-                        alert('❌ No devices found: ' + (data.error || 'Unknown'));
-                    }
-                } catch(e) { alert('Error: ' + e); }
-            });
-            
-            // Next Panel
-            document.getElementById('btnNextPanel').addEventListener('click', async function() {
-                try {
-                    const resp = await fetch('/api/panels/next', {method: 'POST'});
-                    const data = await resp.json();
-                    if (data.success) {
-                        loadDatabases();
-                        alert(`✅ Switched to Panel ${data.index + 1}`);
-                    } else {
-                        alert('❌ No more panels');
-                    }
-                } catch(e) { alert('Error: ' + e); }
-            });
-            
-            // Clear Logs
-            document.getElementById('btnClearLogs').addEventListener('click', async function() {
-                try {
-                    await fetch('/api/clear/logs', {method: 'POST'});
-                    document.getElementById('logsContainer').innerHTML = '';
-                } catch(e) {}
-            });
-            
-            // Export
-            document.getElementById('btnExportAccounts').addEventListener('click', function() {
-                window.open('/api/export/accounts', '_blank');
-            });
-            document.getElementById('btnExportHits').addEventListener('click', function() {
-                window.open('/api/export/hits', '_blank');
-            });
-            
-            // Enter key for DB input
-            document.getElementById('dbInput').addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' && e.ctrlKey) {
-                    document.getElementById('btnAddDb').click();
-                }
-            });
-            
-            // Close modals on ESC
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') {
-                    closeHitsModal();
-                    closeHitDetailModal();
-                }
-            });
-        });
-    </script>
+        list.innerHTML = data.databases.map((url, i) => `
+          <div class="db-item ${i === data.current_index ? 'active' : ''}">
+            <span class="db-url">${i+1}. ${url.substring(0, 48)}${url.length > 48 ? '…' : ''}</span>
+            <div>
+              ${i !== data.current_index ? `<button class="btn btn-ghost btn-sm" onclick="selectDb(${i})">select</button>` : ''}
+              <button class="btn btn-ghost btn-sm" onclick="deleteDb(${i})">✕</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) { console.error(e); }
+    }
+    async function selectDb(i) {
+      try { await fetch('/api/databases/select', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ index: i }) }); loadDatabases(); } catch (e) {}
+    }
+    async function deleteDb(i) {
+      if (!confirm('delete this database?')) return;
+      try { await fetch('/api/databases/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ index: i }) }); loadDatabases(); } catch (e) {}
+    }
+
+    // ─── events ───
+    document.addEventListener('DOMContentLoaded', function() {
+      connectSocket();
+      loadDatabases();
+
+      document.getElementById('btnStart').addEventListener('click', async () => {
+        try { const r = await fetch('/api/start', { method: 'POST' }); const d = await r.json(); if (!d.success) alert(d.error); } catch (e) { alert(e); }
+      });
+      document.getElementById('btnStop').addEventListener('click', async () => { try { await fetch('/api/stop', { method: 'POST' }); } catch (e) {} });
+      document.getElementById('btnShowHits').addEventListener('click', () => { document.getElementById('hitsModal').style.display = 'block'; loadHits(); });
+      document.getElementById('btnNextPanel').addEventListener('click', async () => {
+        try { const r = await fetch('/api/panels/next', { method: 'POST' }); const d = await r.json(); if (d.success) { loadDatabases(); alert('✅ switched panel'); } else alert('no more panels'); } catch (e) { alert(e); }
+      });
+      document.getElementById('btnClearLogs').addEventListener('click', async () => {
+        try { await fetch('/api/clear/logs', { method: 'POST' }); document.getElementById('logsContainer').innerHTML = '<div class="text-muted" style="padding:20px;text-align:center;">logs cleared</div>'; } catch (e) {}
+      });
+      document.getElementById('btnFetchDevices').addEventListener('click', async () => {
+        try { const r = await fetch('/api/fetch-devices', { method: 'POST' }); const d = await r.json(); if (d.devices) alert(`📡 found ${d.count} devices from ${d.panel || 'panel'}`); else alert('no devices'); } catch (e) { alert(e); }
+      });
+      document.getElementById('btnExportAccounts').addEventListener('click', () => window.open('/api/export/accounts', '_blank'));
+      document.getElementById('btnExportHits').addEventListener('click', () => window.open('/api/export/hits', '_blank'));
+
+      document.getElementById('btnAddDb').addEventListener('click', async function() {
+        const input = document.getElementById('dbInput');
+        const text = input.value.trim();
+        if (!text) return alert('enter at least one URL');
+        const urls = text.split(/[\n,]+/).map(u => u.trim()).filter(u => u);
+        if (!urls.length) return alert('no valid URLs');
+        this.textContent = '⏳ adding…';
+        this.disabled = true;
+        try {
+          const r = await fetch('/api/databases/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ urls }) });
+          const d = await r.json();
+          if (d.added > 0) { alert(`✅ added ${d.added} databases`); input.value = ''; loadDatabases(); } else alert('❌ none added');
+        } catch (e) { alert('error'); } finally { this.textContent = '➕ add'; this.disabled = false; }
+      });
+
+      document.getElementById('btnLogout').addEventListener('click', () => { window.location.href = '/logout'; });
+
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeHitsModal(); closeHitDetailModal(); } });
+    });
+  </script>
 </body>
 </html>
