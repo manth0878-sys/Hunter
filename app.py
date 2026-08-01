@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-FKCoinHunter - Multi-User Web Panel (FIXED - with file locking)
-Each user has isolated data, logs, databases, and hits.
+FKCoinHunter - Multi-User Web Panel (FINAL - PRODUCTION READY)
+✅ File locking to prevent corruption
+✅ Safe JSON read/write with recovery
+✅ Proper start/stop handling
+✅ Executor recreation on restart
+✅ Session-based authentication
+✅ Each user has isolated data
 """
 
 import os
@@ -15,9 +20,8 @@ import secrets
 import base64
 import urllib.parse
 import shutil
-import fcntl
 import errno
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Set, Tuple
 from dataclasses import dataclass, field
 import requests
@@ -37,10 +41,12 @@ HIT_THRESHOLD = 75
 OTP_WAIT_SECONDS = 20
 OTP_CHECK_INTERVAL = 3
 MAX_WORKERS = 10
+SESSION_TIMEOUT_DAYS = 30
 
 # ============ FLASK APP ============
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'fkcoinhunter-multi-user-secret-key-change-this'
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=SESSION_TIMEOUT_DAYS)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Store active user sessions
@@ -49,11 +55,10 @@ user_lock = threading.Lock()
 
 # ============ FILE LOCKING UTILITY ============
 class FileLock:
-    """Cross-platform file locking using fcntl (Unix) or lockfile (Windows)"""
+    """Cross-platform file locking"""
     
     @staticmethod
     def lock_file(filepath, timeout=5):
-        """Lock a file with timeout"""
         lock_file = filepath + '.lock'
         start_time = time.time()
         while True:
@@ -71,7 +76,6 @@ class FileLock:
     
     @staticmethod
     def unlock_file(filepath):
-        """Unlock a file"""
         lock_file = filepath + '.lock'
         try:
             os.remove(lock_file)
@@ -81,11 +85,10 @@ class FileLock:
 
 # ============ SAFE JSON FILE OPERATIONS ============
 def safe_json_read(filepath, default=None):
-    """Safely read a JSON file with file locking"""
+    """Safely read a JSON file with file locking and recovery"""
     if default is None:
-        default = [] if 'accounts' in filepath or 'hits' in filepath or 'panels' in filepath or 'logs' in filepath else {}
+        default = [] if any(x in filepath for x in ['accounts', 'hits', 'panels', 'logs']) else {}
     
-    # Acquire lock
     if not FileLock.lock_file(filepath, timeout=3):
         return default
     
@@ -94,19 +97,14 @@ def safe_json_read(filepath, default=None):
             return default
         
         with open(filepath, 'r', encoding='utf-8') as f:
-            # Read the entire file content first
             content = f.read().strip()
             if not content:
                 return default
             
-            # Try to parse as JSON
             try:
-                data = json.loads(content)
-                return data
-            except json.JSONDecodeError as e:
-                # If the file has multiple JSON objects (corrupted), try to recover
-                # Find all complete JSON objects
-                import re
+                return json.loads(content)
+            except json.JSONDecodeError:
+                # Try to recover from multiple JSON objects
                 objects = []
                 decoder = json.JSONDecoder()
                 idx = 0
@@ -116,27 +114,14 @@ def safe_json_read(filepath, default=None):
                         obj, end = decoder.raw_decode(content, idx)
                         objects.append(obj)
                         idx = end
-                        # Skip whitespace
                         while idx < len(content) and content[idx] in ' \t\n\r':
                             idx += 1
                     except:
                         break
                 
                 if objects:
-                    # Return the first object if there are multiple
-                    # (this handles the "Extra data" error)
-                    if len(objects) == 1:
-                        return objects[0]
-                    else:
-                        # If multiple objects, return the first one
-                        return objects[0]
-                else:
-                    # Try one more time with a different approach
-                    try:
-                        # Use json.loads with strict=False
-                        return json.loads(content, strict=False)
-                    except:
-                        return default
+                    return objects[0]
+                return default
     except Exception as e:
         print(f"Error reading {filepath}: {e}")
         return default
@@ -145,17 +130,13 @@ def safe_json_read(filepath, default=None):
 
 def safe_json_write(filepath, data):
     """Safely write a JSON file with file locking"""
-    # Acquire lock
     if not FileLock.lock_file(filepath, timeout=3):
         return False
     
     try:
-        # Write to a temporary file first
         temp_file = filepath + '.tmp'
         with open(temp_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-        
-        # Atomic rename
         os.replace(temp_file, filepath)
         return True
     except Exception as e:
@@ -166,8 +147,6 @@ def safe_json_write(filepath, data):
 
 # ============ USER DATA DIRECTORY MANAGER ============
 class UserDataManager:
-    """Manages per-user data directories with safe file operations"""
-    
     BASE_DIR = "user_data"
     
     @classmethod
@@ -190,7 +169,6 @@ class UserDataManager:
             if not os.path.exists(filepath):
                 safe_json_write(filepath, [])
         
-        # Create status file
         status_path = os.path.join(user_dir, 'status.json')
         if not os.path.exists(status_path):
             safe_json_write(status_path, {
@@ -238,7 +216,6 @@ class UserDataManager:
         status_path = cls.get_user_file(user_id, 'status.json')
         status = safe_json_read(status_path, {})
         
-        # Ensure all required fields exist
         required_fields = {
             'running': False,
             'total_processed': 0,
@@ -294,7 +271,6 @@ class UserDataManager:
         
         safe_json_write(logs_path, logs)
         
-        # Also update the status's processing_logs
         status = cls.load_user_status(user_id)
         status['processing_logs'] = logs[-100:]
         cls.save_user_status(user_id, status)
@@ -310,8 +286,6 @@ class UserDataManager:
 
 # ============ USER MANAGER ============
 class UserManager:
-    """Manages user authentication and session data with safe file ops"""
-    
     USERS_FILE = "users.json"
     _users_cache = None
     _cache_lock = threading.Lock()
@@ -324,7 +298,6 @@ class UserManager:
             
             users = safe_json_read(cls.USERS_FILE, {})
             
-            # Create default admin user if no users exist
             if not users:
                 users = {
                     'admin': {
@@ -351,6 +324,8 @@ class UserManager:
         if username in users:
             hashed = hashlib.sha256(password.encode()).hexdigest()
             if users[username]['password'] == hashed:
+                users[username]['last_login'] = datetime.now().isoformat()
+                cls.save_users(users)
                 return username
         return None
     
@@ -367,7 +342,6 @@ class UserManager:
             'last_login': None
         }
         cls.save_users(users)
-        
         UserDataManager.ensure_user_data(username)
         return username
     
@@ -385,11 +359,6 @@ class UserManager:
             if data.get('api_key') == api_key:
                 return username
         return None
-    
-    @classmethod
-    def clear_cache(cls):
-        with cls._cache_lock:
-            cls._users_cache = None
 
 # ============ DECORATORS ============
 def require_auth(f):
@@ -402,6 +371,7 @@ def require_auth(f):
                 user_id = UserManager.validate_api_key(api_key)
                 if user_id:
                     session['user_id'] = user_id
+                    session.permanent = True
                     return f(*args, **kwargs)
             return jsonify({'error': 'Authentication required'}), 401
         return f(*args, **kwargs)
@@ -413,10 +383,12 @@ def get_user_id_from_request():
         api_key = request.headers.get('X-API-Key')
         if api_key:
             user_id = UserManager.validate_api_key(api_key)
+            if user_id:
+                session['user_id'] = user_id
+                session.permanent = True
     return user_id
 
-# ============ COPIED FUNCTIONS FROM ORIGINAL ============
-
+# ============ FIREBASE FUNCTIONS ============
 def parse_panel_link(link: str) -> Optional[Tuple[str, str]]:
     if "?s=" in link:
         parsed = urllib.parse.urlparse(link)
@@ -572,8 +544,6 @@ def fetch_messages_for_device(firebase_url: str, device_id: str, api_key: Option
 
 # ============ PER-USER ACCOUNT MANAGER ============
 class UserAccountManager:
-    """Manages accounts for a specific user with safe file ops"""
-    
     def __init__(self, user_id: str):
         self.user_id = user_id
         self.accounts: List[Dict] = []
@@ -717,6 +687,8 @@ class UserAccountManager:
             self.no_otp_numbers.add(phone)
             self.stats['no_otp'] += 1
             status = UserDataManager.load_user_status(self.user_id)
+            if 'stats' not in status:
+                status['stats'] = {}
             status['stats']['no_otp'] = self.stats['no_otp']
             UserDataManager.save_user_status(self.user_id, status)
     
@@ -836,16 +808,22 @@ class UserAccountManager:
 
 # ============ PER-USER WORKER ============
 class UserWorker:
-    """Worker for a specific user"""
-    
     def __init__(self, user_id: str):
         self.user_id = user_id
         self.running = False
         self.thread = None
-        self.executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+        self.executor = None
+        self._create_executor()
         self.account_manager = UserAccountManager(user_id)
         self.failed_count = 0
         self.processed_count = 0
+        self._stop_requested = False
+    
+    def _create_executor(self):
+        """Create a new thread pool executor"""
+        if self.executor and not self.executor._shutdown:
+            self.executor.shutdown(wait=False)
+        self.executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
     
     def get_status(self) -> dict:
         status = UserDataManager.load_user_status(self.user_id)
@@ -877,9 +855,14 @@ class UserWorker:
     def start(self):
         if self.running:
             return
+        
+        self._stop_requested = False
         self.running = True
         self.failed_count = 0
         self.processed_count = 0
+        
+        self._create_executor()
+        
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
         self.send_log(f"🔄 Automation started with {MAX_WORKERS} concurrent workers", 'success')
@@ -887,9 +870,16 @@ class UserWorker:
     
     def stop(self):
         self.running = False
-        self.executor.shutdown(wait=False)
-        if self.thread:
-            self.thread.join(timeout=5)
+        self._stop_requested = True
+        
+        if self.executor and not self.executor._shutdown:
+            self.executor.shutdown(wait=False)
+        
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=3)
+        
+        self._create_executor()
+        
         self.send_log("⏹ Automation stopped", 'warning')
         self.update_status()
     
@@ -913,8 +903,11 @@ class UserWorker:
         return False
     
     def _run(self):
-        while self.running:
+        while self.running and not self._stop_requested:
             try:
+                if not self.executor or self.executor._shutdown:
+                    self._create_executor()
+                
                 panels = self.account_manager.get_panels()
                 
                 if not panels:
@@ -977,7 +970,10 @@ class UserWorker:
                 failed_total = 0
                 batch_num = 1
                 
-                while processed_total < total_available and self.running:
+                while processed_total < total_available and self.running and not self._stop_requested:
+                    if not self.executor or self.executor._shutdown:
+                        self._create_executor()
+                    
                     start_idx = processed_total
                     end_idx = min(processed_total + MAX_WORKERS, total_available)
                     batch = available[start_idx:end_idx]
@@ -986,14 +982,26 @@ class UserWorker:
                     
                     futures = []
                     for phone, device_id in batch:
-                        if not self.running:
+                        if not self.running or self._stop_requested:
                             break
                         
-                        future = self.executor.submit(
-                            self._process_device,
-                            phone, device_id, firebase_url, sender_keyword, api_key
-                        )
-                        futures.append(future)
+                        try:
+                            future = self.executor.submit(
+                                self._process_device,
+                                phone, device_id, firebase_url, sender_keyword, api_key
+                            )
+                            futures.append(future)
+                        except RuntimeError as e:
+                            if "cannot schedule new futures" in str(e) or "shutdown" in str(e):
+                                self.send_log("⚠️ Executor issue, recreating...", 'warning')
+                                self._create_executor()
+                                future = self.executor.submit(
+                                    self._process_device,
+                                    phone, device_id, firebase_url, sender_keyword, api_key
+                                )
+                                futures.append(future)
+                            else:
+                                raise
                         
                         status = UserDataManager.load_user_status(self.user_id)
                         status['active_workers'] = len([f for f in futures if not f.done()])
@@ -1004,6 +1012,8 @@ class UserWorker:
                     batch_failed = 0
                     
                     for future in as_completed(futures):
+                        if self._stop_requested:
+                            break
                         try:
                             result = future.result(timeout=60)
                             if result:
@@ -1040,7 +1050,7 @@ class UserWorker:
                         self.send_log(f"⚠️ Too many failures ({self.failed_count} consecutive). Moving to next panel...", 'warning')
                         break
                     
-                    if processed_total < total_available:
+                    if processed_total < total_available and self.running and not self._stop_requested:
                         time.sleep(2)
                 
                 self.send_log(f"📊 Panel complete: {processed_total - failed_total} success, {failed_total} failed out of {total_available}", 'info')
@@ -1060,6 +1070,7 @@ class UserWorker:
         status['active_workers'] = 0
         UserDataManager.save_user_status(self.user_id, status)
         self.update_status()
+        self.send_log("🔄 Worker thread stopped gracefully", 'info')
     
     def _process_device(self, phone: str, device_id: str, firebase_url: str, sender_keyword: str, api_key: Optional[str] = None) -> bool:
         if self.account_manager.is_processed(phone):
@@ -1109,7 +1120,10 @@ class UserWorker:
 def index():
     user_id = session.get('user_id')
     if user_id:
-        return send_file('templates/index.html')
+        try:
+            return send_file('templates/index.html')
+        except:
+            return "Please create templates/index.html file"
     return redirect(url_for('login_page'))
 
 @app.route('/login')
@@ -1169,6 +1183,7 @@ def login():
     user_id = UserManager.authenticate(username, password)
     if user_id:
         session['user_id'] = user_id
+        session.permanent = True
         UserDataManager.ensure_user_data(user_id)
         return redirect('/')
     else:
@@ -1252,6 +1267,12 @@ def register():
 
 @app.route('/logout')
 def logout():
+    user_id = session.get('user_id')
+    if user_id:
+        with user_lock:
+            if user_id in active_users:
+                active_users[user_id]['worker'].stop()
+                del active_users[user_id]
     session.pop('user_id', None)
     return redirect('/login')
 
@@ -1447,6 +1468,10 @@ def api_start():
                 'worker': UserWorker(user_id),
                 'created_at': datetime.now().isoformat()
             }
+        else:
+            # Recreate worker if it was stopped
+            if not active_users[user_id]['worker'].running:
+                active_users[user_id]['worker'] = UserWorker(user_id)
         worker = active_users[user_id]['worker']
     
     worker.start()
@@ -1534,22 +1559,41 @@ def handle_disconnect():
 
 # ============ MAIN ============
 if __name__ == '__main__':
-    print("\n" + "=" * 60)
-    print("🦅 FKCoinHunter - Multi-User Web Panel (FIXED)")
-    print("=" * 60)
-    print("✅ File locking added to prevent corruption")
-    print("✅ Safe JSON reading with recovery")
+    print("\n" + "=" * 70)
+    print("🦅 FKCoinHunter - Multi-User Web Panel (FINAL)")
+    print("=" * 70)
+    print("✅ File locking to prevent corruption")
+    print("✅ Safe JSON read/write with recovery")
+    print("✅ Proper start/stop handling")
+    print("✅ Executor recreation on restart")
+    print("✅ Session-based authentication (auto-login on revisit)")
     print("✅ Each user has isolated data")
-    print("Default admin: admin / admin123")
-    print("=" * 60)
+    print("=" * 70)
+    print("\n📋 Default Admin:")
+    print("   Username: admin")
+    print("   Password: admin123")
+    print("=" * 70)
     print("\n🌐 Starting web server...")
     print("📱 Open your browser and go to: http://localhost:5000")
-    print("=" * 60 + "\n")
+    print("=" * 70 + "\n")
     
     def open_browser():
         time.sleep(1.5)
-        webbrowser.open('http://localhost:5000')
+        try:
+            webbrowser.open('http://localhost:5000')
+        except:
+            pass
     
     threading.Thread(target=open_browser, daemon=True).start()
     
-    socketio.run(app, host="0.0.0.0", port=5000, debug=False, use_reloader=False, allow_unsafe_werkzeug=True)
+    try:
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+    except KeyboardInterrupt:
+        print("\n\n🛑 Shutting down...")
+        # Clean up all workers
+        for user_id in list(active_users.keys()):
+            try:
+                active_users[user_id]['worker'].stop()
+            except:
+                pass
+        print("👋 Goodbye!")
